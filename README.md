@@ -1,36 +1,116 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# CodexPool
 
-## Getting Started
+OpenAI 兼容 API 中转代理平台。通过上游 Codex 账号池转发用户请求，支持用户管理、密钥管理、额度控制、套餐管理和兑换码系统。
 
-First, run the development server:
+## 技术栈
+
+- **Next.js 16** (App Router)
+- **Prisma 6** + PostgreSQL (Vercel Postgres / Neon)
+- **NextAuth.js** (Credentials 认证)
+- **Tailwind CSS** + **shadcn/ui**
+- **Vercel Cron** (每日额度重置)
+
+## 快速开始
+
+### 1. 安装依赖
+
+```bash
+npm install
+```
+
+### 2. 配置环境变量
+
+复制 `.env` 文件并填写配置：
+
+```bash
+cp .env .env.local
+```
+
+必要的环境变量：
+
+| 变量 | 说明 |
+|------|------|
+| `DATABASE_URL` | PostgreSQL 连接地址 |
+| `NEXTAUTH_URL` | 网站地址 (如 `http://localhost:3000`) |
+| `NEXTAUTH_SECRET` | NextAuth 加密密钥 (随机字符串) |
+| `ADMIN_EMAIL` | 管理员邮箱 (首次注册此邮箱自动成为管理员) |
+| `CRON_SECRET` | Vercel Cron 认证密钥 |
+
+### 3. 初始化数据库
+
+```bash
+npx prisma migrate dev --name init
+```
+
+### 4. 启动开发服务器
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+访问 http://localhost:3000
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 5. 初始设置
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. 使用 `ADMIN_EMAIL` 配置的邮箱注册账号（自动获得管理员权限）
+2. 进入管理后台 `/admin`
+3. 添加上游 Codex 账号（Upstream 管理）
+4. 创建套餐（Plans 管理）
+5. 生成兑换码分发给用户
 
-## Learn More
+## API 使用
 
-To learn more about Next.js, take a look at the following resources:
+用户获得 API Key 后，可以像使用 OpenAI API 一样调用：
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+curl https://your-domain.com/api/v1/chat/completions \
+  -H "Authorization: Bearer sk-your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-4o-mini",
+    "messages": [{"role": "user", "content": "Hello!"}]
+  }'
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+支持的端点：
+- `POST /api/v1/chat/completions` — 对话补全 (支持流式)
+- `POST /api/v1/embeddings` — 向量嵌入
+- `GET /api/v1/models` — 可用模型列表
 
-## Deploy on Vercel
+## 部署到 Vercel
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+1. 将项目推送到 GitHub
+2. 在 Vercel 中导入项目
+3. 关联 Vercel Postgres 数据库
+4. 配置环境变量
+5. 部署
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+npx vercel --prod
+```
+
+## 项目结构
+
+```
+src/
+├── app/
+│   ├── (auth)/          # 登录/注册页面
+│   ├── (dashboard)/     # 用户仪表盘
+│   ├── (admin)/         # 管理后台
+│   └── api/
+│       ├── v1/          # OpenAI 兼容代理接口
+│       ├── auth/        # 认证接口
+│       ├── user/        # 用户接口
+│       ├── admin/       # 管理接口
+│       └── cron/        # 定时任务
+├── lib/                 # 核心逻辑
+│   ├── proxy.ts         # 代理转发
+│   ├── load-balancer.ts # 负载均衡
+│   ├── quota.ts         # 额度管理
+│   └── rate-limiter.ts  # 限流器
+└── components/          # UI 组件
+```
+
+## License
+
+MIT

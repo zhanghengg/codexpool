@@ -1,0 +1,160 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+model User {
+  id            String         @id @default(cuid())
+  email         String         @unique
+  passwordHash  String
+  name          String?
+  role          Role           @default(USER)
+  isBlocked     Boolean        @default(false)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  apiKeys       ApiKey[]
+  subscriptions Subscription[]
+  usageLogs     UsageLog[]
+  redeemLogs    RedeemLog[]
+}
+
+model ApiKey {
+  id        String     @id @default(cuid())
+  key       String     @unique
+  name      String     @default("Default")
+  userId    String
+  isActive  Boolean    @default(true)
+  createdAt DateTime   @default(now())
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  usageLogs UsageLog[]
+
+  @@index([key])
+  @@index([userId])
+}
+
+model Plan {
+  id                String         @id @default(cuid())
+  name              String
+  description       String         @default("")
+  durationDays      Int
+  dailyRequestLimit Int
+  dailyTokenLimit   Int
+  totalTokenLimit   Int
+  rpm               Int            @default(10)
+  allowedModels     String[]       @default([])
+  isActive          Boolean        @default(true)
+  sortOrder         Int            @default(0)
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  subscriptions     Subscription[]
+  redeemCodes       RedeemCode[]
+}
+
+model Subscription {
+  id               String   @id @default(cuid())
+  userId           String
+  planId           String
+  startAt          DateTime @default(now())
+  expireAt         DateTime
+  dailyRequestsUsed Int     @default(0)
+  dailyTokensUsed  Int      @default(0)
+  totalTokensUsed  Int      @default(0)
+  dailyResetAt     DateTime @default(now())
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan             Plan     @relation(fields: [planId], references: [id])
+
+  @@index([userId])
+  @@index([userId, isActive])
+}
+
+model RedeemCode {
+  id        String      @id @default(cuid())
+  code      String      @unique
+  planId    String
+  batchId   String?
+  maxUses   Int         @default(1)
+  usedCount Int         @default(0)
+  expireAt  DateTime?
+  createdAt DateTime    @default(now())
+  plan      Plan        @relation(fields: [planId], references: [id])
+  logs      RedeemLog[]
+
+  @@index([code])
+  @@index([batchId])
+}
+
+model RedeemLog {
+  id         String     @id @default(cuid())
+  userId     String
+  codeId     String
+  redeemedAt DateTime   @default(now())
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  code       RedeemCode @relation(fields: [codeId], references: [id])
+
+  @@index([userId])
+}
+
+model UpstreamAccount {
+  id            String     @id @default(cuid())
+  name          String
+  email         String
+  accountId     String
+  accessToken   String     @db.Text
+  refreshToken  String     @db.Text
+  idToken       String?    @db.Text
+  tokenExpiry   DateTime
+  lastRefresh   DateTime?
+  baseUrl       String     @default("https://chatgpt.com/backend-api/codex")
+  weight        Int        @default(1)
+  isActive      Boolean    @default(true)
+  isHealthy     Boolean    @default(true)
+  errorCount    Int        @default(0)
+  totalUsed     Int        @default(0)
+  lastCheckAt   DateTime?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  usageLogs     UsageLog[]
+}
+
+model UsageLog {
+  id               String          @id @default(cuid())
+  userId           String
+  apiKeyId         String
+  upstreamId       String?
+  model            String?
+  endpoint         String
+  promptTokens     Int             @default(0)
+  completionTokens Int             @default(0)
+  totalTokens      Int             @default(0)
+  latencyMs        Int             @default(0)
+  statusCode       Int             @default(200)
+  errorMessage     String?
+  createdAt        DateTime        @default(now())
+  user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  apiKey           ApiKey          @relation(fields: [apiKeyId], references: [id], onDelete: Cascade)
+  upstream         UpstreamAccount? @relation(fields: [upstreamId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([userId, createdAt])
+}
+
+model SystemSetting {
+  id    String @id @default(cuid())
+  key   String @unique
+  value String
+
+  @@index([key])
+}
