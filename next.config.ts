@@ -1,7 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  outputFileTracingIncludes: {
+    "/**": ["./src/generated/prisma/*.so.node", "./src/generated/prisma/*.wasm"],
+  },
 };
 
 export default nextConfig;
