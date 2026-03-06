@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
 import {
   LayoutDashboard,
@@ -71,8 +71,21 @@ function NavLinks({ isMobile = false }: { isMobile?: boolean }) {
   );
 }
 
-// Need SheetClose for mobile nav - wrap in a component that has access to Sheet
+function useHandleSignOut() {
+  const router = useRouter();
+  return async () => {
+    try {
+      await signOut({ redirect: false });
+      router.push("/login");
+      router.refresh();
+    } catch {
+      window.location.href = "/login";
+    }
+  };
+}
+
 function MobileNavContent({ userEmail, userRole }: DashboardSidebarProps) {
+  const handleSignOut = useHandleSignOut();
   return (
     <>
       <SheetHeader className="text-left">
@@ -103,7 +116,7 @@ function MobileNavContent({ userEmail, userRole }: DashboardSidebarProps) {
           <Button
             variant="ghost"
             className="w-full justify-start gap-3"
-            onClick={() => signOut({ callbackUrl: "/login" })}
+            onClick={handleSignOut}
           >
             <LogOut className="size-4" />
             退出登录
@@ -115,6 +128,7 @@ function MobileNavContent({ userEmail, userRole }: DashboardSidebarProps) {
 }
 
 export function DashboardSidebar({ userEmail, userRole }: DashboardSidebarProps) {
+  const handleSignOut = useHandleSignOut();
   return (
     <>
       {/* Desktop Sidebar */}
@@ -146,7 +160,7 @@ export function DashboardSidebar({ userEmail, userRole }: DashboardSidebarProps)
             variant="ghost"
             size="sm"
             className="mt-2 w-full justify-start gap-2"
-            onClick={() => signOut({ callbackUrl: "/login" })}
+            onClick={handleSignOut}
           >
             <LogOut className="size-4" />
             退出登录
