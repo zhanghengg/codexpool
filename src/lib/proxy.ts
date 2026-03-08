@@ -271,6 +271,245 @@ async function collectStreamToJson(
   });
 }
 
+// ─── Responses API: pass-through proxy ─────────────────────────────
+
+export async function proxyResponsesRequest(
+  request: Request,
+  ctx: ProxyContext
+): Promise<Response> {
+  const rawBody = await request.text();
+  let parsedBody: Record<string, unknown> = {};
+  try {
+    parsedBody = JSON.parse(rawBody);
+  } catch {
+    return new Response(
+      JSON.stringify({ error: { message: "Invalid request body", type: "invalid_request_error" } }),
+      { status: 400, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
+  const userWantsStream = parsedBody.stream !== false;
+  const model = (parsedBody.model as string) || "gpt-5.3-codex";
+
+  const upstreamBody: Record<string, unknown> = {
+    ...parsedBody,
+    stream: true,
+    store: parsedBody.store ?? false,
+  };
+  if (!upstreamBody.reasoning) {
+    upstreamBody.reasoning = { effort: "medium" };
+  }
+  if (upstreamBody.include === undefined) {
+    upstreamBody.include = ["reasoning.encrypted_content"];
+  }
+
+  const codexBody = JSON.stringify(upstreamBody);
+
+  const triedIds: string[] = [];
+  let lastError: string | null = null;
+
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    const upstream =
+      attempt === 0
+        ? await selectUpstream()
+        : await selectUpstreamExcluding(triedIds);
+
+    if (!upstream) {
+      return new Response(
+        JSON.stringify({
+          error: {
+            message: lastError
+              ? `All upstream accounts failed: ${lastError}`
+              : "No available upstream accounts",
+            type: "server_error",
+          },
+        }),
+        { status: 503, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    triedIds.push(upstream.id);
+    const startTime = Date.now();
+
+    try {
+      const upstreamUrl = `${upstream.baseUrl}${CODEX_ENDPOINT}`;
+      const upstreamResponse = await fetch(upstreamUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "text/event-stream",
+          Authorization: `Bearer ${upstream.accessToken}`,
+          "User-Agent": CODEX_USER_AGENT,
+          "Openai-Beta": "responses=experimental",
+          Version: CODEX_VERSION,
+          Originator: "codex_cli_rs",
+          Session_id: randomSessionId(),
+          "Chatgpt-Account-Id": upstream.accountId,
+          Connection: "Keep-Alive",
+        },
+        body: codexBody,
+      });
+
+      if (!upstreamResponse.ok) {
+        const errorText = await upstreamResponse.text();
+        await reportUpstreamError(upstream.id);
+        lastError = errorText;
+
+        logUsage(ctx, upstream, startTime, upstreamResponse.status, errorText).catch(() => {});
+
+        if (upstreamResponse.status === 429 || upstreamResponse.status >= 500) {
+          continue;
+        }
+
+        return new Response(
+          JSON.stringify({
+            error: { message: `Upstream error: ${upstreamResponse.status}`, type: "server_error" },
+          }),
+          { status: upstreamResponse.status, headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      await reportUpstreamSuccess(upstream.id);
+
+      if (userWantsStream) {
+        return handleResponsesStreamPassthrough(upstreamResponse, ctx, upstream, startTime);
+      }
+
+      return collectResponsesToJson(upstreamResponse, ctx, upstream, startTime);
+    } catch (err) {
+      await reportUpstreamError(upstream.id);
+      lastError = err instanceof Error ? err.message : "Unknown error";
+      logUsage(ctx, upstream, startTime, 500, lastError).catch(() => {});
+      continue;
+    }
+  }
+
+  return new Response(
+    JSON.stringify({
+      error: {
+        message: `All upstream accounts failed: ${lastError}`,
+        type: "server_error",
+      },
+    }),
+    { status: 502, headers: { "Content-Type": "application/json" } }
+  );
+}
+
+function handleResponsesStreamPassthrough(
+  upstreamResponse: Response,
+  ctx: ProxyContext,
+  upstream: UpstreamInfo,
+  startTime: number
+): Response {
+  const upstreamBody = upstreamResponse.body;
+  if (!upstreamBody) {
+    return new Response(
+      JSON.stringify({ error: { message: "No response body" } }),
+      { status: 502 }
+    );
+  }
+
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+  let buffer = "";
+
+  const transformer = new TransformStream<Uint8Array, Uint8Array>({
+    transform(chunk, controller) {
+      buffer += decoder.decode(chunk, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+
+      for (const line of lines) {
+        controller.enqueue(encoder.encode(line + "\n"));
+
+        const trimmed = line.trim();
+        if (!trimmed.startsWith("data:")) continue;
+        const payload = trimmed.slice(5).trim();
+        if (payload === "[DONE]") continue;
+
+        try {
+          const event = JSON.parse(payload) as Record<string, unknown>;
+          const eventType = event.type as string | undefined;
+          if (eventType === "response.completed" || eventType === "response.done") {
+            const resp = event.response as Record<string, unknown> | undefined;
+            const usage = resp?.usage as Record<string, number> | undefined;
+            if (usage) {
+              const total = (usage.input_tokens || 0) + (usage.output_tokens || 0);
+              addTokenUsage(ctx.subscriptionId, total).catch(() => {});
+              logUsage(ctx, upstream, startTime, 200, null, total).catch(() => {});
+            }
+          }
+        } catch {
+          // ignore parse errors
+        }
+      }
+    },
+    flush(controller) {
+      if (buffer) {
+        controller.enqueue(encoder.encode(buffer));
+      }
+    },
+  });
+
+  const stream = upstreamBody.pipeThrough(transformer);
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    },
+  });
+}
+
+async function collectResponsesToJson(
+  upstreamResponse: Response,
+  ctx: ProxyContext,
+  upstream: UpstreamInfo,
+  startTime: number
+): Promise<Response> {
+  const sseText = await upstreamResponse.text();
+
+  let finalResponse: Record<string, unknown> | null = null;
+
+  for (const line of sseText.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("data:")) continue;
+    const payload = trimmed.slice(5).trim();
+    if (payload === "[DONE]") break;
+
+    try {
+      const event = JSON.parse(payload) as Record<string, unknown>;
+      const eventType = event.type as string | undefined;
+      if (eventType === "response.completed" || eventType === "response.done") {
+        const resp = event.response as Record<string, unknown> | undefined;
+        if (resp) finalResponse = resp;
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  if (!finalResponse) {
+    return new Response(
+      JSON.stringify({ error: { message: "No completed response from upstream", type: "server_error" } }),
+      { status: 502, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
+  const usage = finalResponse.usage as Record<string, number> | undefined;
+  const totalTokens = (usage?.input_tokens || 0) + (usage?.output_tokens || 0);
+  addTokenUsage(ctx.subscriptionId, totalTokens).catch(() => {});
+  logUsage(ctx, upstream, startTime, 200, null, totalTokens).catch(() => {});
+
+  return new Response(JSON.stringify(finalResponse), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+// ─── Shared helpers ────────────────────────────────────────────────
+
 function extractFnArgs(item: Record<string, unknown>): string {
   for (const key of ["arguments", "input", "arguments_json"]) {
     const val = item[key];

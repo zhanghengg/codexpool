@@ -7,6 +7,14 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     "/**": ["./src/generated/prisma/*.so.node"],
   },
+  async rewrites() {
+    return [
+      {
+        source: "/v1/:path*",
+        destination: "/api/v1/:path*",
+      },
+    ];
+  },
   webpack: (config, { isServer }) => {
     if (isServer) {
       config.plugins = [...config.plugins, new PrismaPlugin()];
