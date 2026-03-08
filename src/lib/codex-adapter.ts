@@ -129,7 +129,7 @@ export function convertChatRequestToCodex(body: Record<string, unknown>): {
 
 export function convertCodexResponseToChat(codexData: Record<string, unknown>): string {
   const id = (codexData.id as string) || "chatcmpl-codexpool";
-  const model = (codexData.model as string) || "gpt-4o-mini";
+  const model = (codexData.model as string) || "gpt-5.3-codex";
 
   let contentText = "";
   const toolCalls: Array<{
@@ -210,18 +210,57 @@ export function convertCodexResponseToChat(codexData: Record<string, unknown>): 
 
 // ─── SSE streaming conversion: Codex → OpenAI ─────────────────────
 
-export function createCodexStreamTransformer(model: string): TransformStream<Uint8Array, Uint8Array> {
+export function createCodexStreamTransformer(
+  model: string,
+  onComplete?: (usage: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+  }) => void
+): TransformStream<Uint8Array, Uint8Array> {
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
   let responseId = "chatcmpl-codexpool";
   let buffer = "";
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
+  let finalized = false;
   const pendingToolCalls: Map<number, {
     id: string;
     name: string;
     arguments: string;
   }> = new Map();
+
+  function finalizeStream(
+    controller: TransformStreamDefaultController<Uint8Array>
+  ) {
+    if (finalized) return;
+    finalized = true;
+
+    flushToolCalls(controller, encoder, responseId, model);
+
+    const usage = {
+      prompt_tokens: totalInputTokens,
+      completion_tokens: totalOutputTokens,
+      total_tokens: totalInputTokens + totalOutputTokens,
+    };
+
+    onComplete?.({
+      promptTokens: totalInputTokens,
+      completionTokens: totalOutputTokens,
+      totalTokens: usage.total_tokens,
+    });
+
+    const doneChunk = formatOpenAIDelta(
+      responseId,
+      model,
+      {},
+      "stop",
+      usage
+    );
+    controller.enqueue(encoder.encode(`data: ${doneChunk}\n\n`));
+    controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+  }
 
   return new TransformStream({
     transform(chunk, controller) {
@@ -234,16 +273,7 @@ export function createCodexStreamTransformer(model: string): TransformStream<Uin
         if (!trimmed.startsWith("data:")) continue;
         const payload = trimmed.slice(5).trim();
         if (payload === "[DONE]") {
-          flushToolCalls(controller, encoder, responseId, model);
-          const doneChunk = formatOpenAIDelta(
-            responseId,
-            model,
-            {},
-            "stop",
-            { prompt_tokens: totalInputTokens, completion_tokens: totalOutputTokens, total_tokens: totalInputTokens + totalOutputTokens }
-          );
-          controller.enqueue(encoder.encode(`data: ${doneChunk}\n\n`));
-          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+          finalizeStream(controller);
           return;
         }
 
@@ -328,16 +358,7 @@ export function createCodexStreamTransformer(model: string): TransformStream<Uin
     },
 
     flush(controller) {
-      flushToolCalls(controller, encoder, responseId, model);
-      const doneChunk = formatOpenAIDelta(
-        responseId,
-        model,
-        {},
-        "stop",
-        { prompt_tokens: totalInputTokens, completion_tokens: totalOutputTokens, total_tokens: totalInputTokens + totalOutputTokens }
-      );
-      controller.enqueue(encoder.encode(`data: ${doneChunk}\n\n`));
-      controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+      finalizeStream(controller);
     },
   });
 

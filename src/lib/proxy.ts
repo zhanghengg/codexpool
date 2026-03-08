@@ -55,7 +55,7 @@ export async function proxyRequest(
   }
 
   const { codexBody, isStream } = convertChatRequestToCodex(parsedBody);
-  const model = (parsedBody.model as string) || "gpt-4o-mini";
+  const model = (parsedBody.model as string) || "gpt-5.3-codex";
 
   const triedIds: string[] = [];
   let lastError: string | null = null;
@@ -163,10 +163,11 @@ function handleStreamResponse(
     );
   }
 
-  const transformer = createCodexStreamTransformer(model);
+  const transformer = createCodexStreamTransformer(model, ({ totalTokens }) => {
+    addTokenUsage(ctx.subscriptionId, totalTokens).catch(() => {});
+    logUsage(ctx, upstream, startTime, 200, null, totalTokens).catch(() => {});
+  });
   const stream = upstreamBody.pipeThrough(transformer);
-
-  logUsage(ctx, upstream, startTime, 200, null, 0).catch(() => {});
 
   return new Response(stream, {
     headers: {

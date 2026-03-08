@@ -2,10 +2,7 @@ import { authenticateApiKey } from "@/lib/api-auth";
 import { checkQuota } from "@/lib/quota";
 
 const DEFAULT_MODELS = [
-  "gpt-4o",
-  "gpt-4o-mini",
-  "gpt-4-turbo",
-  "gpt-3.5-turbo",
+  "gpt-5.3-codex",
 ];
 
 export async function GET(request: Request) {
