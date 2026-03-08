@@ -14,48 +14,52 @@ export default function LandingPage() {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="sticky top-0 z-50 border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="container flex h-16 items-center justify-between px-4">
+      <header className="sticky top-0 z-50 border-b border-border/50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between px-4 md:px-6">
           <div className="flex items-center gap-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-              <span className="font-bold">C</span>
+            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
+              <span className="text-xs font-bold">C</span>
             </div>
-            <span className="text-xl font-bold">CodexPool</span>
+            <span className="text-sm font-semibold md:text-base">CodexPool</span>
           </div>
-          <nav className="flex items-center gap-4">
+          <nav className="flex items-center gap-2">
             <Link href="/login">
-              <Button variant="ghost">登录</Button>
+              <Button size="sm" variant="ghost" className="h-8 px-3 text-xs md:text-sm">
+                登录
+              </Button>
             </Link>
             <Link href="/register">
-              <Button>免费注册</Button>
+              <Button size="sm" className="h-8 px-3 text-xs md:text-sm">
+                免费注册
+              </Button>
             </Link>
           </nav>
         </div>
       </header>
 
       {/* Hero */}
-      <section className="relative overflow-hidden bg-gradient-to-b from-primary/5 via-background to-background">
+      <section className="relative overflow-hidden border-b border-border/40 bg-gradient-to-b from-primary/5 via-background to-background">
         <div className="absolute inset-0 -z-10 bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(120,119,198,0.15),transparent)] dark:bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(120,119,198,0.08),transparent)]" />
-        <div className="container flex flex-col items-center px-4 py-24 md:py-32">
-          <div className="mx-auto max-w-3xl text-center space-y-6">
-            <h1 className="text-4xl font-bold tracking-tight sm:text-5xl md:text-6xl">
+        <div className="mx-auto flex w-full max-w-6xl flex-col items-center px-4 py-20 md:px-6 md:py-28">
+          <div className="mx-auto max-w-3xl space-y-6 text-center">
+            <h1 className="text-4xl font-bold tracking-tight sm:text-5xl md:text-[56px]">
               OpenAI 兼容
               <span className="block bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
                 API 中转服务
               </span>
             </h1>
-            <p className="text-lg text-muted-foreground md:text-xl">
+            <p className="mx-auto max-w-2xl text-sm leading-7 text-muted-foreground md:text-base">
               稳定、高效、易用的 API 代理服务。无缝对接 OpenAI 格式，轻松管理配额与用量，让您的应用快速接入大模型能力。
             </p>
-            <div className="flex flex-col items-center gap-4 pt-4 sm:flex-row sm:justify-center">
+            <div className="flex flex-col items-center gap-3 pt-4 sm:flex-row sm:justify-center">
               <Link href="/register">
-                <Button size="lg" className="gap-2 text-base">
+                <Button size="lg" className="h-10 gap-2 px-5 text-sm">
                   开始使用
                   <ArrowRight className="size-4" />
                 </Button>
               </Link>
               <Link href="/login">
-                <Button size="lg" variant="outline" className="text-base">
+                <Button size="lg" variant="outline" className="h-10 px-5 text-sm">
                   已有账户？登录
                 </Button>
               </Link>
@@ -65,41 +69,41 @@ export default function LandingPage() {
       </section>
 
       {/* Features */}
-      <section className="relative border-t border-border/40 bg-muted/30 py-24">
-        <div className="container px-4">
+      <section className="relative bg-muted/20 py-20 md:py-24">
+        <div className="mx-auto w-full max-w-6xl px-4 md:px-6">
           <div className="mx-auto max-w-2xl text-center">
             <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
               核心能力
             </h2>
-            <p className="mt-4 text-lg text-muted-foreground">
+            <p className="mt-3 text-sm text-muted-foreground md:text-base">
               专为开发者打造的 API 中转服务，让您的集成更简单
             </p>
           </div>
-          <div className="mx-auto mt-16 grid max-w-5xl gap-8 sm:grid-cols-2 lg:grid-cols-3">
-            <div className="group rounded-2xl border border-border bg-card p-8 shadow-sm transition-all hover:shadow-md hover:border-primary/20 dark:hover:border-primary/30">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                <Zap className="size-6" />
+          <div className="mx-auto mt-12 grid max-w-5xl gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="group rounded-xl border border-border bg-card p-6 shadow-sm transition-all hover:border-primary/20 hover:shadow-md dark:hover:border-primary/30">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <Zap className="size-5" />
               </div>
-              <h3 className="mt-4 text-xl font-semibold">稳定中转</h3>
-              <p className="mt-2 text-muted-foreground">
+              <h3 className="mt-4 text-base font-semibold">稳定中转</h3>
+              <p className="mt-2 text-sm text-muted-foreground">
                 高可用架构，支持多上游源切换，保证服务稳定可靠。
               </p>
             </div>
-            <div className="group rounded-2xl border border-border bg-card p-8 shadow-sm transition-all hover:shadow-md hover:border-primary/20 dark:hover:border-primary/30">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                <BarChart3 className="size-6" />
+            <div className="group rounded-xl border border-border bg-card p-6 shadow-sm transition-all hover:border-primary/20 hover:shadow-md dark:hover:border-primary/30">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <BarChart3 className="size-5" />
               </div>
-              <h3 className="mt-4 text-xl font-semibold">配额管理</h3>
-              <p className="mt-2 text-muted-foreground">
+              <h3 className="mt-4 text-base font-semibold">配额管理</h3>
+              <p className="mt-2 text-sm text-muted-foreground">
                 灵活的用量统计与配额控制，支持订阅与套餐管理。
               </p>
             </div>
-            <div className="group rounded-2xl border border-border bg-card p-8 shadow-sm transition-all hover:shadow-md hover:border-primary/20 dark:hover:border-primary/30 sm:col-span-2 lg:col-span-1">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                <Layers className="size-6" />
+            <div className="group rounded-xl border border-border bg-card p-6 shadow-sm transition-all hover:border-primary/20 hover:shadow-md dark:hover:border-primary/30 sm:col-span-2 lg:col-span-1">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <Layers className="size-5" />
               </div>
-              <h3 className="mt-4 text-xl font-semibold">即插即用</h3>
-              <p className="mt-2 text-muted-foreground">
+              <h3 className="mt-4 text-base font-semibold">即插即用</h3>
+              <p className="mt-2 text-sm text-muted-foreground">
                 完全兼容 OpenAI API 格式，无需修改现有代码即可接入。
               </p>
             </div>
