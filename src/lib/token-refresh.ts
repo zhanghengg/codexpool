@@ -2,7 +2,7 @@ import { prisma } from "./db";
 
 const OPENAI_TOKEN_URL = "https://auth.openai.com/oauth/token";
 const CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
-const TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000;
+const TOKEN_REFRESH_BUFFER_MS = 2 * 60 * 60 * 1000;
 
 interface TokenResponse {
   access_token: string;
@@ -67,4 +67,37 @@ export async function ensureFreshToken(accountId: string): Promise<string | null
     console.error(`[token-refresh] Error for ${account.email}:`, err);
     return account.accessToken;
   }
+}
+
+const PROACTIVE_REFRESH_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+export async function refreshAllExpiringSoon(): Promise<{
+  refreshed: number;
+  failed: number;
+}> {
+  const threshold = new Date(Date.now() + PROACTIVE_REFRESH_WINDOW_MS);
+
+  const accounts = await prisma.upstreamAccount.findMany({
+    where: { tokenExpiry: { lt: threshold } },
+    select: { id: true, email: true },
+  });
+
+  let refreshed = 0;
+  let failed = 0;
+
+  for (const account of accounts) {
+    const result = await ensureFreshToken(account.id);
+    if (result) {
+      refreshed++;
+    } else {
+      failed++;
+      console.error(`[token-refresh] Proactive refresh failed for ${account.email}`);
+    }
+  }
+
+  console.log(
+    `[token-refresh] Proactive refresh complete: ${refreshed} refreshed, ${failed} failed out of ${accounts.length}`
+  );
+
+  return { refreshed, failed };
 }

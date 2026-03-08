@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { startOfDay } from "date-fns";
+import { refreshAllExpiringSoon } from "@/lib/token-refresh";
 
 export async function GET(request: Request) {
   const authHeader = request.headers.get("authorization");
@@ -35,8 +36,11 @@ export async function GET(request: Request) {
     data: { isHealthy: true, errorCount: 0 },
   });
 
+  const tokenRefreshResult = await refreshAllExpiringSoon();
+
   return NextResponse.json({
     message: "Daily reset complete",
     subscriptionsReset: result.count,
+    tokenRefresh: tokenRefreshResult,
   });
 }
