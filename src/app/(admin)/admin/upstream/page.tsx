@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { Plus, RefreshCw, Trash2, Power, PowerOff, Upload } from "lucide-react";
+import { Plus, RefreshCw, Trash2, Power, PowerOff, Upload, X } from "lucide-react";
 
 interface Upstream {
   id: string;
@@ -56,7 +56,7 @@ export default function AdminUpstreamPage() {
   const [submitting, setSubmitting] = useState(false);
   const [actioning, setActioning] = useState<string | null>(null);
   const [tokenJson, setTokenJson] = useState("");
-  const [fileInfo, setFileInfo] = useState<FileInfo | null>(null);
+  const [files, setFiles] = useState<FileInfo[]>([]);
 
   useEffect(() => { fetchUpstreams(); }, []);
 
@@ -73,11 +73,37 @@ export default function AdminUpstreamPage() {
     }
   }
 
+  const existingAccountIds = useMemo(
+    () => new Set(upstreams.map((u) => u.accountId)),
+    [upstreams]
+  );
+
+  const { uniqueTokens, totalRaw, dupInFiles, newCount, updateCount } = useMemo(() => {
+    const all = files.flatMap((f) => f.tokens);
+    const map = new Map<string, Record<string, unknown>>();
+    for (const t of all) {
+      const aid = t.account_id as string;
+      if (aid) map.set(aid, t);
+    }
+    const unique = Array.from(map.values());
+    const dupInFiles = all.length - unique.length;
+    let newCount = 0;
+    let updateCount = 0;
+    for (const t of unique) {
+      if (existingAccountIds.has(t.account_id as string)) {
+        updateCount++;
+      } else {
+        newCount++;
+      }
+    }
+    return { uniqueTokens: unique, totalRaw: all.length, dupInFiles, newCount, updateCount };
+  }, [files, existingAccountIds]);
+
   async function submitImport() {
     let tokens: Record<string, unknown>[];
 
-    if (fileInfo) {
-      tokens = fileInfo.tokens;
+    if (files.length > 0) {
+      tokens = uniqueTokens;
     } else if (tokenJson.trim()) {
       try {
         const parsed = JSON.parse(tokenJson);
@@ -103,10 +129,15 @@ export default function AdminUpstreamPage() {
         throw new Error(data.error || "导入失败");
       }
       const result = await res.json();
-      toast.success(`成功导入 ${result.count} 个账户`);
+      const created = result.results?.filter((r: { action: string }) => r.action === "created").length ?? 0;
+      const updated = result.results?.filter((r: { action: string }) => r.action === "updated").length ?? 0;
+      const parts = [];
+      if (created > 0) parts.push(`新增 ${created}`);
+      if (updated > 0) parts.push(`更新 ${updated}`);
+      toast.success(`成功导入 ${result.count} 个账户${parts.length > 0 ? `（${parts.join("，")}）` : ""}`);
       setCreateOpen(false);
       setTokenJson("");
-      setFileInfo(null);
+      setFiles([]);
       fetchUpstreams();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "导入失败");
@@ -116,19 +147,37 @@ export default function AdminUpstreamPage() {
   }
 
   async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const text = await file.text();
-    try {
-      const parsed = JSON.parse(text);
-      const tokens = Array.isArray(parsed) ? parsed : [parsed];
-      setFileInfo({ name: file.name, count: tokens.length, tokens });
+    const selected = e.target.files;
+    if (!selected || selected.length === 0) return;
+
+    const newFiles: FileInfo[] = [];
+    const errors: string[] = [];
+
+    for (const file of Array.from(selected)) {
+      try {
+        const text = await file.text();
+        const parsed = JSON.parse(text);
+        const tokens = Array.isArray(parsed) ? parsed : [parsed];
+        newFiles.push({ name: file.name, count: tokens.length, tokens });
+      } catch {
+        errors.push(file.name);
+      }
+    }
+
+    if (newFiles.length > 0) {
+      setFiles((prev) => [...prev, ...newFiles]);
       setTokenJson("");
-      toast.success(`已读取: ${file.name}（${tokens.length} 个账户）`);
-    } catch {
-      toast.error("文件内容不是有效 JSON");
+      const total = newFiles.reduce((s, f) => s + f.count, 0);
+      toast.success(`已读取 ${newFiles.length} 个文件（共 ${total} 个账户）`);
+    }
+    if (errors.length > 0) {
+      toast.error(`以下文件不是有效 JSON: ${errors.join(", ")}`);
     }
     e.target.value = "";
+  }
+
+  function removeFile(index: number) {
+    setFiles((prev) => prev.filter((_, i) => i !== index));
   }
 
   async function toggleActive(u: Upstream) {
@@ -232,26 +281,51 @@ export default function AdminUpstreamPage() {
               <Label htmlFor="file-upload" className="cursor-pointer block">
                 <div className="flex flex-col items-center gap-2 rounded-lg border-2 border-dashed p-6 hover:bg-muted/50 transition-colors text-center">
                   <Upload className="size-8 text-muted-foreground" />
-                  {fileInfo ? (
-                    <div>
-                      <p className="text-sm font-medium">{fileInfo.name}</p>
-                      <p className="text-xs text-muted-foreground">{fileInfo.count} 个账户已读取</p>
-                    </div>
-                  ) : (
-                    <div>
-                      <p className="text-sm font-medium">点击选择 JSON 文件</p>
-                      <p className="text-xs text-muted-foreground">支持单个 Token JSON 或 JSON 数组</p>
-                    </div>
-                  )}
+                  <div>
+                    <p className="text-sm font-medium">点击选择 JSON 文件</p>
+                    <p className="text-xs text-muted-foreground">支持选择多个文件，每个文件可包含单个或数组格式</p>
+                  </div>
                 </div>
               </Label>
               <input
                 id="file-upload"
                 type="file"
                 accept=".json"
+                multiple
                 className="hidden"
+                aria-label="选择 JSON 文件"
                 onChange={handleFileUpload}
               />
+
+              {files.length > 0 && (
+                <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+                  <div className="text-xs font-medium text-muted-foreground space-y-0.5">
+                    <p>已选 {files.length} 个文件（共 {totalRaw} 个账户{dupInFiles > 0 ? `，去重后 ${uniqueTokens.length} 个` : ""}）</p>
+                    {uniqueTokens.length > 0 && (
+                      <p>
+                        {newCount > 0 && <span className="text-green-600 dark:text-green-400">新增 {newCount}</span>}
+                        {newCount > 0 && updateCount > 0 && "，"}
+                        {updateCount > 0 && <span className="text-yellow-600 dark:text-yellow-400">更新 {updateCount}</span>}
+                      </p>
+                    )}
+                  </div>
+                  <div className="space-y-1">
+                    {files.map((f, i) => (
+                      <div key={i} className="flex items-center justify-between rounded-md bg-background px-3 py-1.5 text-sm">
+                        <span className="truncate mr-2">{f.name} <span className="text-muted-foreground">({f.count} 个)</span></span>
+                        <button
+                          type="button"
+                          onClick={() => removeFile(i)}
+                          className="shrink-0 rounded-sm p-0.5 hover:bg-muted transition-colors"
+                          title={`移除 ${f.name}`}
+                        >
+                          <X className="size-3.5 text-muted-foreground" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div className="relative">
                 <div className="absolute inset-0 flex items-center">
@@ -275,9 +349,9 @@ export default function AdminUpstreamPage() {
             </div>
 
             <DialogFooter>
-              <Button variant="outline" onClick={() => { setCreateOpen(false); setFileInfo(null); setTokenJson(""); }}>取消</Button>
-              <Button onClick={submitImport} disabled={submitting || (!fileInfo && !tokenJson.trim())}>
-                {submitting ? "导入中..." : fileInfo ? `导入 ${fileInfo.count} 个账户` : "导入"}
+              <Button variant="outline" onClick={() => { setCreateOpen(false); setFiles([]); setTokenJson(""); }}>取消</Button>
+              <Button onClick={submitImport} disabled={submitting || (files.length === 0 && !tokenJson.trim())}>
+                {submitting ? "导入中..." : files.length > 0 ? `导入 ${uniqueTokens.length} 个账户` : "导入"}
               </Button>
             </DialogFooter>
           </DialogContent>
