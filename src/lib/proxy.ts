@@ -121,7 +121,7 @@ export async function proxyRequest(
         );
       }
 
-      await reportUpstreamSuccess(upstream.id);
+      reportUpstreamSuccess(upstream.id).catch(() => {});
 
       if (isStream) {
         return handleStreamResponse(upstreamResponse, ctx, upstream, startTime, model);
@@ -373,7 +373,7 @@ export async function proxyResponsesRequest(
         );
       }
 
-      await reportUpstreamSuccess(upstream.id);
+      reportUpstreamSuccess(upstream.id).catch(() => {});
 
       if (userWantsStream) {
         return handleResponsesStreamPassthrough(upstreamResponse, ctx, upstream, startTime);

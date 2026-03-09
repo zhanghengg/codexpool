@@ -12,13 +12,16 @@ interface TokenResponse {
   token_type: string;
 }
 
-export async function ensureFreshToken(accountId: string): Promise<string | null> {
-  const account = await prisma.upstreamAccount.findUnique({
-    where: { id: accountId },
-  });
+export interface UpstreamAccountData {
+  id: string;
+  email: string;
+  accessToken: string;
+  refreshToken: string;
+  idToken: string | null;
+  tokenExpiry: Date;
+}
 
-  if (!account) return null;
-
+export async function ensureFreshToken(account: UpstreamAccountData): Promise<string | null> {
   const now = new Date();
   const expiryThreshold = new Date(now.getTime() + TOKEN_REFRESH_BUFFER_MS);
 
@@ -40,7 +43,7 @@ export async function ensureFreshToken(accountId: string): Promise<string | null
     if (!response.ok) {
       console.error(`[token-refresh] Failed for ${account.email}: ${response.status}`);
       await prisma.upstreamAccount.update({
-        where: { id: accountId },
+        where: { id: account.id },
         data: { isHealthy: false },
       });
       return null;
@@ -50,7 +53,7 @@ export async function ensureFreshToken(accountId: string): Promise<string | null
     const newExpiry = new Date(now.getTime() + data.expires_in * 1000);
 
     await prisma.upstreamAccount.update({
-      where: { id: accountId },
+      where: { id: account.id },
       data: {
         accessToken: data.access_token,
         refreshToken: data.refresh_token || account.refreshToken,
@@ -67,6 +70,14 @@ export async function ensureFreshToken(accountId: string): Promise<string | null
     console.error(`[token-refresh] Error for ${account.email}:`, err);
     return account.accessToken;
   }
+}
+
+export async function ensureFreshTokenById(accountId: string): Promise<string | null> {
+  const account = await prisma.upstreamAccount.findUnique({
+    where: { id: accountId },
+  });
+  if (!account) return null;
+  return ensureFreshToken(account);
 }
 
 const PROACTIVE_REFRESH_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -86,7 +97,7 @@ export async function refreshAllExpiringSoon(): Promise<{
   let failed = 0;
 
   for (const account of accounts) {
-    const result = await ensureFreshToken(account.id);
+    const result = await ensureFreshTokenById(account.id);
     if (result) {
       refreshed++;
     } else {

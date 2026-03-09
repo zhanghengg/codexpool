@@ -10,17 +10,36 @@ export interface UpstreamInfo {
   weight: number;
 }
 
-let roundRobinIndex = 0;
+type UpstreamRow = Awaited<ReturnType<typeof prisma.upstreamAccount.findMany>>[number];
 
-export async function selectUpstream(): Promise<UpstreamInfo | null> {
-  const accounts = await prisma.upstreamAccount.findMany({
+const CACHE_TTL_MS = 10_000;
+let cachedAccounts: UpstreamRow[] = [];
+let cacheTimestamp = 0;
+
+async function getHealthyAccounts(): Promise<UpstreamRow[]> {
+  const now = Date.now();
+  if (cachedAccounts.length > 0 && now - cacheTimestamp < CACHE_TTL_MS) {
+    return cachedAccounts;
+  }
+  cachedAccounts = await prisma.upstreamAccount.findMany({
     where: { isActive: true, isHealthy: true },
     orderBy: { weight: "desc" },
   });
+  cacheTimestamp = now;
+  return cachedAccounts;
+}
 
+export function invalidateUpstreamCache() {
+  cacheTimestamp = 0;
+}
+
+let roundRobinIndex = 0;
+
+export async function selectUpstream(): Promise<UpstreamInfo | null> {
+  const accounts = await getHealthyAccounts();
   if (accounts.length === 0) return null;
 
-  const weighted: typeof accounts = [];
+  const weighted: UpstreamRow[] = [];
   for (const a of accounts) {
     for (let i = 0; i < a.weight; i++) {
       weighted.push(a);
@@ -30,7 +49,7 @@ export async function selectUpstream(): Promise<UpstreamInfo | null> {
   roundRobinIndex = (roundRobinIndex + 1) % weighted.length;
   const selected = weighted[roundRobinIndex];
 
-  const freshToken = await ensureFreshToken(selected.id);
+  const freshToken = await ensureFreshToken(selected);
   if (!freshToken) return null;
 
   return {
@@ -46,21 +65,14 @@ export async function selectUpstream(): Promise<UpstreamInfo | null> {
 export async function selectUpstreamExcluding(
   excludeIds: string[]
 ): Promise<UpstreamInfo | null> {
-  const accounts = await prisma.upstreamAccount.findMany({
-    where: {
-      isActive: true,
-      isHealthy: true,
-      id: { notIn: excludeIds },
-    },
-    orderBy: { weight: "desc" },
-  });
+  const accounts = await getHealthyAccounts();
+  const filtered = accounts.filter((a) => !excludeIds.includes(a.id));
+  if (filtered.length === 0) return null;
 
-  if (accounts.length === 0) return null;
+  const idx = Math.floor(Math.random() * filtered.length);
+  const selected = filtered[idx];
 
-  const idx = Math.floor(Math.random() * accounts.length);
-  const selected = accounts[idx];
-
-  const freshToken = await ensureFreshToken(selected.id);
+  const freshToken = await ensureFreshToken(selected);
   if (!freshToken) return null;
 
   return {
@@ -86,6 +98,7 @@ export async function reportUpstreamError(upstreamId: string) {
       where: { id: upstreamId },
       data: { isHealthy: false },
     });
+    invalidateUpstreamCache();
   }
 }
 

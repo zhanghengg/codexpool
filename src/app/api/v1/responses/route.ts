@@ -70,7 +70,7 @@ export async function POST(request: Request) {
     );
   }
 
-  await incrementRequestCount(quota.subscriptionId!);
+  incrementRequestCount(quota.subscriptionId!).catch(() => {});
 
   return proxyResponsesRequest(request, {
     userId: auth.userId,
