@@ -9,6 +9,7 @@ const updatePlanSchema = z.object({
   durationDays: z.number().int().positive().optional(),
   dailyRequestLimit: z.number().int().min(0).optional(),
   dailyTokenLimit: z.number().int().min(0).optional(),
+  dailyCostLimit: z.number().min(0).optional(),
   totalTokenLimit: z.number().int().min(0).optional(),
   rpm: z.number().int().min(0).optional(),
   allowedModels: z.array(z.string()).optional(),

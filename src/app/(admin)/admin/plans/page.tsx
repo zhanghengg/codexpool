@@ -33,6 +33,7 @@ interface Plan {
   durationDays: number;
   dailyRequestLimit: number;
   dailyTokenLimit: number;
+  dailyCostLimit: number;
   totalTokenLimit: number;
   rpm: number;
   allowedModels: string[];
@@ -45,8 +46,9 @@ const defaultPlan: Partial<Plan> = {
   description: "",
   durationDays: 30,
   dailyRequestLimit: 100,
-  dailyTokenLimit: 100000,
-  totalTokenLimit: 1000000,
+  dailyTokenLimit: 0,
+  dailyCostLimit: 1,
+  totalTokenLimit: 0,
   rpm: 10,
   allowedModels: [],
   isActive: true,
@@ -92,6 +94,7 @@ export default function AdminPlansPage() {
       durationDays: plan.durationDays,
       dailyRequestLimit: plan.dailyRequestLimit,
       dailyTokenLimit: plan.dailyTokenLimit,
+      dailyCostLimit: plan.dailyCostLimit,
       totalTokenLimit: plan.totalTokenLimit,
       rpm: plan.rpm,
       allowedModels: plan.allowedModels,
@@ -116,6 +119,7 @@ export default function AdminPlansPage() {
           durationDays: form.durationDays,
           dailyRequestLimit: form.dailyRequestLimit ?? 0,
           dailyTokenLimit: form.dailyTokenLimit ?? 0,
+          dailyCostLimit: form.dailyCostLimit ?? 0,
           totalTokenLimit: form.totalTokenLimit ?? 0,
           rpm: form.rpm ?? 10,
           allowedModels: form.allowedModels ?? [],
@@ -237,8 +241,7 @@ export default function AdminPlansPage() {
                 <TableHead>名称</TableHead>
                 <TableHead>时长(天)</TableHead>
                 <TableHead>日请求限制</TableHead>
-                <TableHead>日 Token 限制</TableHead>
-                <TableHead>总 Token 限制</TableHead>
+                <TableHead>日金额限制</TableHead>
                 <TableHead>RPM</TableHead>
                 <TableHead>状态</TableHead>
                 <TableHead className="w-[140px]">操作</TableHead>
@@ -250,8 +253,9 @@ export default function AdminPlansPage() {
                   <TableCell className="font-medium">{plan.name}</TableCell>
                   <TableCell>{plan.durationDays}</TableCell>
                   <TableCell>{plan.dailyRequestLimit}</TableCell>
-                  <TableCell>{plan.dailyTokenLimit.toLocaleString()}</TableCell>
-                  <TableCell>{plan.totalTokenLimit.toLocaleString()}</TableCell>
+                  <TableCell>
+                    {plan.dailyCostLimit > 0 ? `$${plan.dailyCostLimit.toFixed(2)}` : "不限"}
+                  </TableCell>
                   <TableCell>{plan.rpm}</TableCell>
                   <TableCell>
                     <Badge variant={plan.isActive ? "default" : "secondary"}>
@@ -364,34 +368,28 @@ function PlanForm({
                 dailyRequestLimit: parseInt(e.target.value) || 0,
               })
             }
+            placeholder="0 表示不限制"
           />
         </div>
         <div className="grid gap-2">
-          <Label>日 Token 限制</Label>
+          <Label>日金额限制 (USD)</Label>
           <Input
             type="number"
-            value={form.dailyTokenLimit ?? ""}
+            step="0.01"
+            min="0"
+            value={form.dailyCostLimit ?? ""}
             onChange={(e) =>
               setForm({
                 ...form,
-                dailyTokenLimit: parseInt(e.target.value) || 0,
+                dailyCostLimit: parseFloat(e.target.value) || 0,
               })
             }
+            placeholder="0 表示不限制"
           />
+          <p className="text-xs text-muted-foreground">
+            按 OpenAI 定价估算，超出后当日停用
+          </p>
         </div>
-      </div>
-      <div className="grid gap-2">
-        <Label>总 Token 限制</Label>
-        <Input
-          type="number"
-          value={form.totalTokenLimit ?? ""}
-          onChange={(e) =>
-            setForm({
-              ...form,
-              totalTokenLimit: parseInt(e.target.value) || 0,
-            })
-          }
-        />
       </div>
       <div className="flex items-center gap-2">
         <input

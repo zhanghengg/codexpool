@@ -19,6 +19,7 @@ export async function GET(request: Request) {
     data: {
       dailyRequestsUsed: 0,
       dailyTokensUsed: 0,
+      dailyCostUsed: 0,
       dailyResetAt: todayStart,
     },
   });

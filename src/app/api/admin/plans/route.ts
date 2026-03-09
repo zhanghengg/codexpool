@@ -9,6 +9,7 @@ const createPlanSchema = z.object({
   durationDays: z.number().int().positive(),
   dailyRequestLimit: z.number().int().min(0),
   dailyTokenLimit: z.number().int().min(0),
+  dailyCostLimit: z.number().min(0).default(0),
   totalTokenLimit: z.number().int().min(0),
   rpm: z.number().int().min(0).default(10),
   allowedModels: z.array(z.string()).default([]),

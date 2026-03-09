@@ -50,6 +50,7 @@ model Plan {
   durationDays      Int
   dailyRequestLimit Int
   dailyTokenLimit   Int
+  dailyCostLimit    Float          @default(0)
   totalTokenLimit   Int
   rpm               Int            @default(10)
   allowedModels     String[]       @default([])
@@ -69,6 +70,7 @@ model Subscription {
   expireAt         DateTime
   dailyRequestsUsed Int     @default(0)
   dailyTokensUsed  Int      @default(0)
+  dailyCostUsed    Float    @default(0)
   totalTokensUsed  Int      @default(0)
   dailyResetAt     DateTime @default(now())
   isActive         Boolean  @default(true)

@@ -6,7 +6,7 @@ import {
   type UpstreamInfo,
 } from "./load-balancer";
 import { prisma } from "./db";
-import { addTokenUsage } from "./quota";
+import { addUsage } from "./quota";
 import {
   convertChatRequestToCodex,
   convertCodexResponseToChat,
@@ -164,7 +164,7 @@ function handleStreamResponse(
   }
 
   const transformer = createCodexStreamTransformer(model, (usage) => {
-    addTokenUsage(ctx.subscriptionId, usage.totalTokens).catch(() => {});
+    addUsage(ctx.subscriptionId, usage.promptTokens, usage.completionTokens, model).catch(() => {});
     logUsage(ctx, upstream, startTime, 200, null, usage).catch(() => {});
   });
   const stream = upstreamBody.pipeThrough(transformer);
@@ -245,7 +245,7 @@ async function collectStreamToJson(
   }
 
   const totalTokens = inputTokens + outputTokens;
-  addTokenUsage(ctx.subscriptionId, totalTokens).catch(() => {});
+  addUsage(ctx.subscriptionId, inputTokens, outputTokens, model).catch(() => {});
   logUsage(ctx, upstream, startTime, 200, null, {
     promptTokens: inputTokens,
     completionTokens: outputTokens,
@@ -441,7 +441,7 @@ function handleResponsesStreamPassthrough(
               const input = usage.input_tokens || 0;
               const output = usage.output_tokens || 0;
               const total = input + output;
-              addTokenUsage(ctx.subscriptionId, total).catch(() => {});
+              addUsage(ctx.subscriptionId, input, output, ctx.model).catch(() => {});
               logUsage(ctx, upstream, startTime, 200, null, {
                 promptTokens: input,
                 completionTokens: output,
@@ -511,7 +511,7 @@ async function collectResponsesToJson(
   const promptTokens = usage?.input_tokens || 0;
   const completionTokens = usage?.output_tokens || 0;
   const totalTokens = promptTokens + completionTokens;
-  addTokenUsage(ctx.subscriptionId, totalTokens).catch(() => {});
+  addUsage(ctx.subscriptionId, promptTokens, completionTokens, ctx.model).catch(() => {});
   logUsage(ctx, upstream, startTime, 200, null, {
     promptTokens,
     completionTokens,

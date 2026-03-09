@@ -1,4 +1,5 @@
 import { prisma } from "./db";
+import { estimateCost } from "./pricing";
 import { startOfDay } from "date-fns";
 
 interface QuotaCheckResult {
@@ -43,22 +44,40 @@ export async function checkQuota(
       data: {
         dailyRequestsUsed: 0,
         dailyTokensUsed: 0,
+        dailyCostUsed: 0,
         dailyResetAt: todayStart,
       },
     });
     subscription.dailyRequestsUsed = 0;
     subscription.dailyTokensUsed = 0;
+    subscription.dailyCostUsed = 0;
   }
 
-  if (subscription.dailyRequestsUsed >= subscription.plan.dailyRequestLimit) {
+  if (
+    subscription.plan.dailyRequestLimit > 0 &&
+    subscription.dailyRequestsUsed >= subscription.plan.dailyRequestLimit
+  ) {
     return { allowed: false, reason: "Daily request limit reached" };
   }
 
-  if (subscription.dailyTokensUsed >= subscription.plan.dailyTokenLimit) {
+  if (
+    subscription.plan.dailyTokenLimit > 0 &&
+    subscription.dailyTokensUsed >= subscription.plan.dailyTokenLimit
+  ) {
     return { allowed: false, reason: "Daily token limit reached" };
   }
 
-  if (subscription.totalTokensUsed >= subscription.plan.totalTokenLimit) {
+  if (
+    subscription.plan.dailyCostLimit > 0 &&
+    subscription.dailyCostUsed >= subscription.plan.dailyCostLimit
+  ) {
+    return { allowed: false, reason: "Daily cost limit reached" };
+  }
+
+  if (
+    subscription.plan.totalTokenLimit > 0 &&
+    subscription.totalTokensUsed >= subscription.plan.totalTokenLimit
+  ) {
     return { allowed: false, reason: "Total token limit reached" };
   }
 
@@ -106,6 +125,9 @@ export async function incrementRequestCount(subscriptionId: string) {
   });
 }
 
+/**
+ * @deprecated Use addUsage instead for accurate cost tracking.
+ */
 export async function addTokenUsage(
   subscriptionId: string,
   tokens: number
@@ -115,6 +137,24 @@ export async function addTokenUsage(
     data: {
       dailyTokensUsed: { increment: tokens },
       totalTokensUsed: { increment: tokens },
+    },
+  });
+}
+
+export async function addUsage(
+  subscriptionId: string,
+  promptTokens: number,
+  completionTokens: number,
+  model?: string | null,
+) {
+  const totalTokens = promptTokens + completionTokens;
+  const cost = estimateCost(promptTokens, completionTokens, model);
+  await prisma.subscription.update({
+    where: { id: subscriptionId },
+    data: {
+      dailyTokensUsed: { increment: totalTokens },
+      totalTokensUsed: { increment: totalTokens },
+      dailyCostUsed: { increment: cost },
     },
   });
 }

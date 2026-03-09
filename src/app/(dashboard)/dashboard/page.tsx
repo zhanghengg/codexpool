@@ -18,16 +18,19 @@ interface SubscriptionData {
     name: string;
     dailyRequestLimit: number;
     dailyTokenLimit: number;
+    dailyCostLimit: number;
     totalTokenLimit: number;
   } | null;
   usage: {
     dailyRequestsUsed: number;
     dailyTokensUsed: number;
+    dailyCostUsed: number;
     totalTokensUsed: number;
   } | null;
   percentageUsed: {
     dailyRequests: number;
     dailyTokens: number;
+    dailyCost: number;
     totalTokens: number;
   } | null;
   cost: {
@@ -191,14 +194,8 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold">
-              {usageData!.dailyTokensUsed.toLocaleString()} / {plan!.dailyTokenLimit === 0 ? "∞" : plan!.dailyTokenLimit.toLocaleString()}
+              {usageData!.dailyTokensUsed.toLocaleString()}
             </p>
-            {plan!.dailyTokenLimit > 0 && (
-              <UsageBar
-                value={usageData!.dailyTokensUsed}
-                max={plan!.dailyTokenLimit}
-              />
-            )}
           </CardContent>
         </Card>
         <Card>
@@ -209,14 +206,8 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold">
-              {usageData!.totalTokensUsed.toLocaleString()} / {plan!.totalTokenLimit === 0 ? "∞" : plan!.totalTokenLimit.toLocaleString()}
+              {usageData!.totalTokensUsed.toLocaleString()}
             </p>
-            {plan!.totalTokenLimit > 0 && (
-              <UsageBar
-                value={usageData!.totalTokensUsed}
-                max={plan!.totalTokenLimit}
-              />
-            )}
           </CardContent>
         </Card>
       </div>
@@ -228,15 +219,21 @@ export default function DashboardPage() {
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground">
                 <DollarSign className="size-4" />
-                今日预估费用
+                今日费用
               </CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
-                {formatUSD(sub.cost.dailyCost)}
+                {formatUSD(usageData!.dailyCostUsed)} / {plan!.dailyCostLimit > 0 ? formatUSD(plan!.dailyCostLimit) : "∞"}
               </p>
+              {plan!.dailyCostLimit > 0 && (
+                <UsageBar
+                  value={usageData!.dailyCostUsed}
+                  max={plan!.dailyCostLimit}
+                />
+              )}
               <p className="mt-1 text-xs text-muted-foreground">
-                按 OpenAI 官方定价估算
+                按 OpenAI 定价估算，超限后当日停用
               </p>
             </CardContent>
           </Card>

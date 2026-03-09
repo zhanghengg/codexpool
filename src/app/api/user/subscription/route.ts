@@ -3,7 +3,6 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { estimateCost } from "@/lib/pricing";
-import { startOfDay } from "date-fns";
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -28,24 +27,12 @@ export async function GET() {
     });
   }
 
-  const todayStart = startOfDay(new Date());
+  const totalCostLogs = await prisma.usageLog.findMany({
+    where: { userId: session.user.id, createdAt: { gte: subscription.startAt } },
+    select: { promptTokens: true, completionTokens: true, model: true },
+  });
 
-  const [dailyCostAgg, totalCostAgg] = await Promise.all([
-    prisma.usageLog.findMany({
-      where: { userId: session.user.id, createdAt: { gte: todayStart } },
-      select: { promptTokens: true, completionTokens: true, model: true },
-    }),
-    prisma.usageLog.findMany({
-      where: { userId: session.user.id, createdAt: { gte: subscription.startAt } },
-      select: { promptTokens: true, completionTokens: true, model: true },
-    }),
-  ]);
-
-  const dailyCost = dailyCostAgg.reduce(
-    (sum, l) => sum + estimateCost(l.promptTokens, l.completionTokens, l.model),
-    0,
-  );
-  const totalCost = totalCostAgg.reduce(
+  const totalCost = totalCostLogs.reduce(
     (sum, l) => sum + estimateCost(l.promptTokens, l.completionTokens, l.model),
     0,
   );
@@ -53,24 +40,19 @@ export async function GET() {
   const { plan } = subscription;
   const dailyRequestPercentage =
     plan.dailyRequestLimit > 0
-      ? Math.min(
-          100,
-          (subscription.dailyRequestsUsed / plan.dailyRequestLimit) * 100
-        )
+      ? Math.min(100, (subscription.dailyRequestsUsed / plan.dailyRequestLimit) * 100)
       : 0;
   const dailyTokenPercentage =
     plan.dailyTokenLimit > 0
-      ? Math.min(
-          100,
-          (subscription.dailyTokensUsed / plan.dailyTokenLimit) * 100
-        )
+      ? Math.min(100, (subscription.dailyTokensUsed / plan.dailyTokenLimit) * 100)
+      : 0;
+  const dailyCostPercentage =
+    plan.dailyCostLimit > 0
+      ? Math.min(100, (subscription.dailyCostUsed / plan.dailyCostLimit) * 100)
       : 0;
   const totalTokenPercentage =
     plan.totalTokenLimit > 0
-      ? Math.min(
-          100,
-          (subscription.totalTokensUsed / plan.totalTokenLimit) * 100
-        )
+      ? Math.min(100, (subscription.totalTokensUsed / plan.totalTokenLimit) * 100)
       : 0;
 
   return NextResponse.json({
@@ -89,6 +71,7 @@ export async function GET() {
       durationDays: plan.durationDays,
       dailyRequestLimit: plan.dailyRequestLimit,
       dailyTokenLimit: plan.dailyTokenLimit,
+      dailyCostLimit: plan.dailyCostLimit,
       totalTokenLimit: plan.totalTokenLimit,
       rpm: plan.rpm,
       allowedModels: plan.allowedModels,
@@ -96,15 +79,17 @@ export async function GET() {
     usage: {
       dailyRequestsUsed: subscription.dailyRequestsUsed,
       dailyTokensUsed: subscription.dailyTokensUsed,
+      dailyCostUsed: subscription.dailyCostUsed,
       totalTokensUsed: subscription.totalTokensUsed,
     },
     percentageUsed: {
       dailyRequests: dailyRequestPercentage,
       dailyTokens: dailyTokenPercentage,
+      dailyCost: dailyCostPercentage,
       totalTokens: totalTokenPercentage,
     },
     cost: {
-      dailyCost,
+      dailyCost: subscription.dailyCostUsed,
       totalCost,
     },
   });
