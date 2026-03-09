@@ -32,6 +32,18 @@ function extractContentText(
   return "";
 }
 
+function convertToolChoice(choice: unknown): unknown {
+  if (typeof choice === "string") return choice;
+  if (typeof choice === "object" && choice !== null) {
+    const obj = choice as Record<string, unknown>;
+    if (obj.type === "function" && obj.function) {
+      const fn = obj.function as Record<string, unknown>;
+      return { type: "function", name: fn.name };
+    }
+  }
+  return choice;
+}
+
 function convertMessagesToCodexInput(messages: OpenAIChatMessage[]): {
   instructions: string;
   input: unknown[];
@@ -48,35 +60,34 @@ function convertMessagesToCodexInput(messages: OpenAIChatMessage[]): {
       continue;
     }
 
-    const item: Record<string, unknown> = {};
-
     if (msg.role === "tool") {
-      item.role = "tool";
-      if (msg.tool_call_id) item.tool_call_id = msg.tool_call_id;
-      const text = extractContentText(msg.content);
-      if (text) item.content = text;
+      input.push({
+        type: "function_call_output",
+        call_id: msg.tool_call_id || "",
+        output: extractContentText(msg.content),
+      });
     } else if (msg.role === "assistant") {
-      item.role = "assistant";
       const text = extractContentText(msg.content);
-      if (text) item.content = text;
+      if (text) {
+        input.push({ role: "assistant", content: text });
+      }
 
       if (msg.tool_calls && msg.tool_calls.length > 0) {
-        item.tool_calls = msg.tool_calls.map((tc) => ({
-          id: tc.id,
-          type: "function",
-          function: {
+        for (const tc of msg.tool_calls) {
+          input.push({
+            type: "function_call",
+            call_id: tc.id,
             name: tc.function.name,
             arguments: tc.function.arguments,
-          },
-        }));
+          });
+        }
       }
     } else {
-      item.role = "user";
+      const item: Record<string, unknown> = { role: "user" };
       const text = extractContentText(msg.content);
       if (text) item.content = text;
+      input.push(item);
     }
-
-    input.push(item);
   }
 
   return { instructions, input };
@@ -108,14 +119,21 @@ export function convertChatRequestToCodex(body: Record<string, unknown>): {
     const tools = body.tools as Array<Record<string, unknown>>;
     codexRequest.tools = tools.map((tool) => {
       if (tool.type === "function" && tool.function) {
-        return tool;
+        const fn = tool.function as Record<string, unknown>;
+        return {
+          type: "function",
+          name: fn.name,
+          description: fn.description,
+          parameters: fn.parameters,
+          ...(fn.strict !== undefined ? { strict: fn.strict } : {}),
+        };
       }
       return tool;
     });
   }
 
   if (body.tool_choice !== undefined) {
-    codexRequest.tool_choice = body.tool_choice;
+    codexRequest.tool_choice = convertToolChoice(body.tool_choice);
   }
 
   if (body.service_tier) {
