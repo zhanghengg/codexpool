@@ -299,17 +299,26 @@ export default function AdminUpstreamPage() {
 
               {files.length > 0 && (
                 <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
-                  <div className="text-xs font-medium text-muted-foreground space-y-0.5">
-                    <p>已选 {files.length} 个文件（共 {totalRaw} 个账户{dupInFiles > 0 ? `，去重后 ${uniqueTokens.length} 个` : ""}）</p>
-                    {uniqueTokens.length > 0 && (
-                      <p>
-                        {newCount > 0 && <span className="text-green-600 dark:text-green-400">新增 {newCount}</span>}
-                        {newCount > 0 && updateCount > 0 && "，"}
-                        {updateCount > 0 && <span className="text-yellow-600 dark:text-yellow-400">更新 {updateCount}</span>}
-                      </p>
-                    )}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="text-xs font-medium text-muted-foreground space-y-0.5">
+                      <p>已选 {files.length} 个文件（共 {totalRaw} 个账户{dupInFiles > 0 ? `，去重后 ${uniqueTokens.length} 个` : ""}）</p>
+                      {uniqueTokens.length > 0 && (
+                        <p>
+                          {newCount > 0 && <span className="text-green-600 dark:text-green-400">新增 {newCount}</span>}
+                          {newCount > 0 && updateCount > 0 && "，"}
+                          {updateCount > 0 && <span className="text-yellow-600 dark:text-yellow-400">更新 {updateCount}</span>}
+                        </p>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setFiles([])}
+                      className="shrink-0 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      清空全部
+                    </button>
                   </div>
-                  <div className="space-y-1">
+                  <div className="max-h-[200px] overflow-y-auto space-y-1">
                     {files.map((f, i) => (
                       <div key={i} className="flex items-center justify-between rounded-md bg-background px-3 py-1.5 text-sm">
                         <span className="truncate mr-2">{f.name} <span className="text-muted-foreground">({f.count} 个)</span></span>

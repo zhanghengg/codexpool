@@ -22,7 +22,7 @@ const createUpstreamSchema = z.object({
 });
 
 const batchImportSchema = z.object({
-  tokens: z.array(codexTokenSchema).min(1).max(50),
+  tokens: z.array(codexTokenSchema).min(1),
   weight: z.number().int().min(0).default(1),
   baseUrl: z.string().url().default("https://chatgpt.com/backend-api/codex"),
 });
@@ -72,8 +72,10 @@ export async function POST(request: NextRequest) {
     if (body.tokens && Array.isArray(body.tokens)) {
       const parsed = batchImportSchema.safeParse(body);
       if (!parsed.success) {
+        const issues = parsed.error.issues;
+        const summary = issues.slice(0, 5).map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
         return NextResponse.json(
-          { error: "Invalid input", details: parsed.error.flatten() },
+          { error: `输入校验失败: ${summary}`, details: parsed.error.flatten() },
           { status: 400 }
         );
       }
