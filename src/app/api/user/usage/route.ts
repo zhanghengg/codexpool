@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { estimateCost } from "@/lib/pricing";
+import { estimateCostSmart } from "@/lib/pricing";
 import { z } from "zod";
 import { startOfDay, subDays } from "date-fns";
 
@@ -66,7 +66,7 @@ export async function GET(request: Request) {
 
   for (const log of logs) {
     const dateStr = startOfDay(log.createdAt).toISOString().split("T")[0];
-    const logCost = estimateCost(log.promptTokens, log.completionTokens, log.model);
+    const logCost = estimateCostSmart(log.promptTokens, log.completionTokens, log.totalTokens, log.model);
     const entry = byDay.get(dateStr);
     if (entry) {
       entry.requestCount += 1;

@@ -53,6 +53,25 @@ export function estimateCostFromTotal(
   return (totalTokens / 1_000_000) * blended;
 }
 
+/**
+ * Smart cost estimation: uses prompt/completion split when available,
+ * falls back to blended rate from totalTokens otherwise.
+ */
+export function estimateCostSmart(
+  promptTokens: number,
+  completionTokens: number,
+  totalTokens: number,
+  model?: string | null
+): number {
+  if (promptTokens > 0 || completionTokens > 0) {
+    return estimateCost(promptTokens, completionTokens, model);
+  }
+  if (totalTokens > 0) {
+    return estimateCostFromTotal(totalTokens, model);
+  }
+  return 0;
+}
+
 export function formatCost(usd: number): string {
   if (usd < 0.01) return `$${usd.toFixed(4)}`;
   return `$${usd.toFixed(2)}`;

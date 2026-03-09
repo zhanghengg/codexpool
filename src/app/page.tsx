@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { getServerSession } from "next-auth";
 import {
   Zap,
   Shield,
@@ -9,8 +11,13 @@ import {
   BarChart3,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { authOptions } from "@/lib/auth";
 
-export default function LandingPage() {
+export default async function LandingPage() {
+  const session = await getServerSession(authOptions);
+  if (session?.user) {
+    redirect("/dashboard");
+  }
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}

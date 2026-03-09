@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { estimateCost } from "@/lib/pricing";
+import { estimateCostSmart } from "@/lib/pricing";
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -27,15 +27,15 @@ export async function GET() {
     });
   }
 
-  const totalCostLogs = await prisma.usageLog.findMany({
-    where: { userId: session.user.id, createdAt: { gte: subscription.startAt } },
-    select: { promptTokens: true, completionTokens: true, model: true },
-  });
+    const totalCostLogs = await prisma.usageLog.findMany({
+      where: { userId: session.user.id, createdAt: { gte: subscription.startAt } },
+      select: { promptTokens: true, completionTokens: true, totalTokens: true, model: true },
+    });
 
-  const totalCost = totalCostLogs.reduce(
-    (sum, l) => sum + estimateCost(l.promptTokens, l.completionTokens, l.model),
-    0,
-  );
+    const totalCost = totalCostLogs.reduce(
+      (sum, l) => sum + estimateCostSmart(l.promptTokens, l.completionTokens, l.totalTokens, l.model),
+      0,
+    );
 
   const { plan } = subscription;
   const dailyRequestPercentage =

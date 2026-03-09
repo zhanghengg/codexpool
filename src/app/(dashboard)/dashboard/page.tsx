@@ -64,6 +64,86 @@ function UsageBar({ value, max }: { value: number; max: number }) {
   );
 }
 
+const BAR_HEIGHT = 128;
+
+interface DayStat {
+  date: string;
+  requestCount: number;
+  tokenUsage: number;
+  cost: number;
+}
+
+function ChartCard({
+  title,
+  subtitle,
+  stats,
+  getValue,
+  formatValue,
+  maxValue,
+  barColor,
+  barHoverColor,
+  totalLabel,
+  totalValue,
+  totalClassName,
+}: {
+  title: string;
+  subtitle: string;
+  stats: DayStat[];
+  getValue: (d: DayStat) => number;
+  formatValue: (v: number) => string;
+  maxValue: number;
+  barColor: string;
+  barHoverColor: string;
+  totalLabel: string;
+  totalValue: string;
+  totalClassName?: string;
+}) {
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm font-medium">{title}</CardTitle>
+        <p className="text-xs text-muted-foreground">{subtitle}</p>
+      </CardHeader>
+      <CardContent>
+        <div className="flex items-end gap-1.5" style={{ height: BAR_HEIGHT + 24 }}>
+          {stats.map((day) => {
+            const val = getValue(day);
+            const barH = maxValue > 0 ? Math.round((val / maxValue) * BAR_HEIGHT) : 0;
+            const clampedH = val > 0 ? Math.max(barH, 4) : 0;
+            return (
+              <div key={day.date} className="group relative flex flex-1 flex-col items-center gap-1">
+                <div className="absolute -top-5 left-1/2 z-10 hidden -translate-x-1/2 rounded bg-foreground px-1.5 py-0.5 text-[10px] font-medium text-background group-hover:block whitespace-nowrap">
+                  {formatValue(val)}
+                </div>
+                <div className="w-full" style={{ height: BAR_HEIGHT }}>
+                  <div className="flex h-full flex-col justify-end">
+                    <div
+                      className="w-full rounded-t transition-all duration-300"
+                      style={{
+                        height: clampedH,
+                        backgroundColor: barColor,
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = barHoverColor; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = barColor; }}
+                    />
+                  </div>
+                </div>
+                <span className="text-[10px] text-muted-foreground">
+                  {format(new Date(day.date), "M/d", { locale: zhCN })}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+        <div className="mt-2 flex items-center justify-between border-t pt-2">
+          <span className="text-xs text-muted-foreground">{totalLabel}</span>
+          <span className={`text-sm font-semibold ${totalClassName ?? ""}`}>{totalValue}</span>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function DashboardPage() {
   const [sub, setSub] = useState<SubscriptionData | null>(null);
   const [usage, setUsage] = useState<UsageStats | null>(null);
@@ -139,8 +219,10 @@ export default function DashboardPage() {
   }
 
   const { plan, usage: usageData, percentageUsed } = sub;
-  const maxReq = Math.max(...(usage?.stats.map((s) => s.requestCount) ?? [1]), 1);
-  const maxTok = Math.max(...(usage?.stats.map((s) => s.tokenUsage) ?? [1]), 1);
+  const stats = usage?.stats ?? [];
+  const maxReq = Math.max(...stats.map((s) => s.requestCount), 1);
+  const maxTok = Math.max(...stats.map((s) => s.tokenUsage), 1);
+  const maxCost = Math.max(...stats.map((s) => s.cost), 0.001);
 
   return (
     <div className="space-y-6">
@@ -272,55 +354,46 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Simple Bar Chart - Last 7 days */}
-      <Card>
-        <CardHeader>
-          <CardTitle>近 7 日用量</CardTitle>
-          <p className="text-sm text-muted-foreground">
-            请求次数与 Token 使用量
-          </p>
-        </CardHeader>
-        <CardContent>
-          <div className="flex h-48 items-end gap-2">
-            {usage?.stats.map((day) => (
-              <div
-                key={day.date}
-                className="flex flex-1 flex-col items-center gap-1"
-              >
-                <div className="flex w-full flex-1 flex-col justify-end gap-0.5">
-                  <div
-                    className="w-full rounded-t bg-primary/80 transition-all"
-                    style={{
-                      height: `${(day.requestCount / maxReq) * 50}%`,
-                      minHeight: day.requestCount > 0 ? "4px" : "0",
-                    }}
-                    title={`请求: ${day.requestCount}`}
-                  />
-                  <div
-                    className="w-full rounded-t bg-primary/40 transition-all"
-                    style={{
-                      height: `${(day.tokenUsage / maxTok) * 50}%`,
-                      minHeight: day.tokenUsage > 0 ? "4px" : "0",
-                    }}
-                    title={`Token: ${day.tokenUsage}`}
-                  />
-                </div>
-                <span className="text-xs text-muted-foreground">
-                  {format(new Date(day.date), "M/d", { locale: zhCN })}
-                </span>
-              </div>
-            ))}
-          </div>
-          <div className="mt-4 flex gap-6 text-xs text-muted-foreground">
-            <span className="flex items-center gap-1.5">
-              <span className="h-3 w-3 rounded bg-primary/80" /> 请求
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="h-3 w-3 rounded bg-primary/40" /> Token
-            </span>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Charts - Last 7 days */}
+      <div className="grid gap-4 lg:grid-cols-3">
+        <ChartCard
+          title="请求次数"
+          subtitle="近 7 日每日请求量"
+          stats={stats}
+          getValue={(d) => d.requestCount}
+          formatValue={(v) => String(v)}
+          maxValue={maxReq}
+          barColor="rgba(59,130,246,0.7)"
+          barHoverColor="rgba(59,130,246,1)"
+          totalLabel="合计"
+          totalValue={String(usage?.totalRequests ?? 0)}
+        />
+        <ChartCard
+          title="Token 用量"
+          subtitle="近 7 日每日 Token 消耗"
+          stats={stats}
+          getValue={(d) => d.tokenUsage}
+          formatValue={(v) => v.toLocaleString()}
+          maxValue={maxTok}
+          barColor="rgba(139,92,246,0.7)"
+          barHoverColor="rgba(139,92,246,1)"
+          totalLabel="合计"
+          totalValue={(usage?.totalTokens ?? 0).toLocaleString()}
+        />
+        <ChartCard
+          title="预估费用"
+          subtitle="近 7 日每日预估费用"
+          stats={stats}
+          getValue={(d) => d.cost}
+          formatValue={(v) => formatUSD(v)}
+          maxValue={maxCost}
+          barColor="rgba(16,185,129,0.7)"
+          barHoverColor="rgba(16,185,129,1)"
+          totalLabel="合计"
+          totalValue={formatUSD(usage?.totalCost ?? 0)}
+          totalClassName="text-emerald-600 dark:text-emerald-400"
+        />
+      </div>
     </div>
   );
 }
