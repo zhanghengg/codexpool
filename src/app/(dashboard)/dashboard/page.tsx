@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Gift } from "lucide-react";
+import { Gift, DollarSign } from "lucide-react";
 import { format } from "date-fns";
 import { zhCN } from "date-fns/locale";
 
@@ -30,13 +30,23 @@ interface SubscriptionData {
     dailyTokens: number;
     totalTokens: number;
   } | null;
+  cost: {
+    dailyCost: number;
+    totalCost: number;
+  } | null;
 }
 
 interface UsageStats {
   days: number;
-  stats: { date: string; requestCount: number; tokenUsage: number }[];
+  stats: { date: string; requestCount: number; tokenUsage: number; cost: number }[];
   totalRequests: number;
   totalTokens: number;
+  totalCost: number;
+}
+
+function formatUSD(amount: number): string {
+  if (amount < 0.01) return `$${amount.toFixed(4)}`;
+  return `$${amount.toFixed(2)}`;
 }
 
 function UsageBar({ value, max }: { value: number; max: number }) {
@@ -210,6 +220,60 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Cost Cards */}
+      {sub.cost && (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground">
+                <DollarSign className="size-4" />
+                今日预估费用
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+                {formatUSD(sub.cost.dailyCost)}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                按 OpenAI 官方定价估算
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground">
+                <DollarSign className="size-4" />
+                累计预估费用
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+                {formatUSD(sub.cost.totalCost)}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                订阅期间累计等价金额
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground">
+                <DollarSign className="size-4" />
+                近 7 日费用
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+                {formatUSD(usage?.totalCost ?? 0)}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                最近 7 天用量等价金额
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* Simple Bar Chart - Last 7 days */}
       <Card>

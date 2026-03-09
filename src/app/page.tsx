@@ -113,7 +113,7 @@ export default function LandingPage() {
 
       {/* How it works */}
       <section className="py-24">
-        <div className="container px-4">
+        <div className="mx-auto w-full max-w-6xl px-4 md:px-6">
           <div className="mx-auto max-w-2xl text-center">
             <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
               三步上手
@@ -158,7 +158,7 @@ export default function LandingPage() {
 
       {/* CTA */}
       <section className="border-t border-border/40 bg-muted/30 py-24">
-        <div className="container px-4">
+        <div className="mx-auto w-full max-w-6xl px-4 md:px-6">
           <div className="mx-auto max-w-2xl rounded-2xl border border-border bg-card p-8 text-center shadow-sm md:p-12">
             <div className="flex justify-center">
               <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground">
@@ -190,7 +190,7 @@ export default function LandingPage() {
 
       {/* Footer */}
       <footer className="border-t border-border/40 py-8">
-        <div className="container px-4">
+        <div className="mx-auto w-full max-w-6xl px-4 md:px-6">
           <div className="flex flex-col items-center justify-between gap-4 md:flex-row">
             <div className="flex items-center gap-2">
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">

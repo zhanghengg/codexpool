@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { estimateCost } from "@/lib/pricing";
 import { z } from "zod";
 import { startOfDay, subDays } from "date-fns";
 
@@ -31,13 +32,23 @@ export async function GET(request: Request) {
     },
     select: {
       createdAt: true,
+      promptTokens: true,
+      completionTokens: true,
       totalTokens: true,
+      model: true,
     },
   });
 
   const byDay = new Map<
     string,
-    { date: string; requestCount: number; tokenUsage: number }
+    {
+      date: string;
+      requestCount: number;
+      tokenUsage: number;
+      promptTokens: number;
+      completionTokens: number;
+      cost: number;
+    }
   >();
 
   for (let i = 0; i < days; i++) {
@@ -47,20 +58,30 @@ export async function GET(request: Request) {
       date: dateStr,
       requestCount: 0,
       tokenUsage: 0,
+      promptTokens: 0,
+      completionTokens: 0,
+      cost: 0,
     });
   }
 
   for (const log of logs) {
     const dateStr = startOfDay(log.createdAt).toISOString().split("T")[0];
+    const logCost = estimateCost(log.promptTokens, log.completionTokens, log.model);
     const entry = byDay.get(dateStr);
     if (entry) {
       entry.requestCount += 1;
       entry.tokenUsage += log.totalTokens;
+      entry.promptTokens += log.promptTokens;
+      entry.completionTokens += log.completionTokens;
+      entry.cost += logCost;
     } else {
       byDay.set(dateStr, {
         date: dateStr,
         requestCount: 1,
         tokenUsage: log.totalTokens,
+        promptTokens: log.promptTokens,
+        completionTokens: log.completionTokens,
+        cost: logCost,
       });
     }
   }
@@ -74,5 +95,8 @@ export async function GET(request: Request) {
     stats,
     totalRequests: stats.reduce((sum, s) => sum + s.requestCount, 0),
     totalTokens: stats.reduce((sum, s) => sum + s.tokenUsage, 0),
+    totalPromptTokens: stats.reduce((sum, s) => sum + s.promptTokens, 0),
+    totalCompletionTokens: stats.reduce((sum, s) => sum + s.completionTokens, 0),
+    totalCost: stats.reduce((sum, s) => sum + s.cost, 0),
   });
 }

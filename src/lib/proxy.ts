@@ -163,9 +163,9 @@ function handleStreamResponse(
     );
   }
 
-  const transformer = createCodexStreamTransformer(model, ({ totalTokens }) => {
-    addTokenUsage(ctx.subscriptionId, totalTokens).catch(() => {});
-    logUsage(ctx, upstream, startTime, 200, null, totalTokens).catch(() => {});
+  const transformer = createCodexStreamTransformer(model, (usage) => {
+    addTokenUsage(ctx.subscriptionId, usage.totalTokens).catch(() => {});
+    logUsage(ctx, upstream, startTime, 200, null, usage).catch(() => {});
   });
   const stream = upstreamBody.pipeThrough(transformer);
 
@@ -246,7 +246,11 @@ async function collectStreamToJson(
 
   const totalTokens = inputTokens + outputTokens;
   addTokenUsage(ctx.subscriptionId, totalTokens).catch(() => {});
-  logUsage(ctx, upstream, startTime, 200, null, totalTokens).catch(() => {});
+  logUsage(ctx, upstream, startTime, 200, null, {
+    promptTokens: inputTokens,
+    completionTokens: outputTokens,
+    totalTokens,
+  }).catch(() => {});
 
   const openaiResponse = {
     id: responseId,
@@ -434,9 +438,15 @@ function handleResponsesStreamPassthrough(
             const resp = event.response as Record<string, unknown> | undefined;
             const usage = resp?.usage as Record<string, number> | undefined;
             if (usage) {
-              const total = (usage.input_tokens || 0) + (usage.output_tokens || 0);
+              const input = usage.input_tokens || 0;
+              const output = usage.output_tokens || 0;
+              const total = input + output;
               addTokenUsage(ctx.subscriptionId, total).catch(() => {});
-              logUsage(ctx, upstream, startTime, 200, null, total).catch(() => {});
+              logUsage(ctx, upstream, startTime, 200, null, {
+                promptTokens: input,
+                completionTokens: output,
+                totalTokens: total,
+              }).catch(() => {});
             }
           }
         } catch {
@@ -498,9 +508,15 @@ async function collectResponsesToJson(
   }
 
   const usage = finalResponse.usage as Record<string, number> | undefined;
-  const totalTokens = (usage?.input_tokens || 0) + (usage?.output_tokens || 0);
+  const promptTokens = usage?.input_tokens || 0;
+  const completionTokens = usage?.output_tokens || 0;
+  const totalTokens = promptTokens + completionTokens;
   addTokenUsage(ctx.subscriptionId, totalTokens).catch(() => {});
-  logUsage(ctx, upstream, startTime, 200, null, totalTokens).catch(() => {});
+  logUsage(ctx, upstream, startTime, 200, null, {
+    promptTokens,
+    completionTokens,
+    totalTokens,
+  }).catch(() => {});
 
   return new Response(JSON.stringify(finalResponse), {
     status: 200,
@@ -520,15 +536,33 @@ function extractFnArgs(item: Record<string, unknown>): string {
   return "{}";
 }
 
+interface TokenDetail {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+}
+
 async function logUsage(
   ctx: ProxyContext,
   upstream: UpstreamInfo,
   startTime: number,
   statusCode: number,
   errorMessage: string | null,
-  totalTokens?: number
+  tokens?: TokenDetail | number
 ) {
   try {
+    let promptTokens = 0;
+    let completionTokens = 0;
+    let totalTokens = 0;
+
+    if (typeof tokens === "number") {
+      totalTokens = tokens;
+    } else if (tokens) {
+      promptTokens = tokens.promptTokens;
+      completionTokens = tokens.completionTokens;
+      totalTokens = tokens.totalTokens;
+    }
+
     await prisma.usageLog.create({
       data: {
         userId: ctx.userId,
@@ -536,7 +570,9 @@ async function logUsage(
         upstreamId: upstream.id,
         model: ctx.model,
         endpoint: ctx.endpoint,
-        totalTokens: totalTokens || 0,
+        promptTokens,
+        completionTokens,
+        totalTokens,
         latencyMs: Date.now() - startTime,
         statusCode,
         errorMessage,

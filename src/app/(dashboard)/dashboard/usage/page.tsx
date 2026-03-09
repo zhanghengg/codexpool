@@ -17,6 +17,9 @@ interface UsageStat {
   date: string;
   requestCount: number;
   tokenUsage: number;
+  promptTokens: number;
+  completionTokens: number;
+  cost: number;
 }
 
 interface UsageData {
@@ -24,6 +27,14 @@ interface UsageData {
   stats: UsageStat[];
   totalRequests: number;
   totalTokens: number;
+  totalPromptTokens: number;
+  totalCompletionTokens: number;
+  totalCost: number;
+}
+
+function formatUSD(amount: number): string {
+  if (amount < 0.01) return `$${amount.toFixed(4)}`;
+  return `$${amount.toFixed(2)}`;
 }
 
 export default function UsagePage() {
@@ -68,7 +79,7 @@ export default function UsagePage() {
       <h1 className="text-2xl font-bold">用量统计</h1>
 
       {/* Summary Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -101,6 +112,9 @@ export default function UsagePage() {
             <p className="text-2xl font-bold">
               {data!.totalTokens.toLocaleString()}
             </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              输入 {data!.totalPromptTokens.toLocaleString()} / 输出 {data!.totalCompletionTokens.toLocaleString()}
+            </p>
           </CardContent>
         </Card>
         <Card>
@@ -114,6 +128,21 @@ export default function UsagePage() {
               {data!.days > 0
                 ? Math.round(data!.totalRequests / data!.days).toLocaleString()
                 : 0}
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              预估总费用
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+              {formatUSD(data!.totalCost)}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              按 OpenAI 官方定价估算
             </p>
           </CardContent>
         </Card>
@@ -133,13 +162,16 @@ export default function UsagePage() {
               <TableRow>
                 <TableHead>日期</TableHead>
                 <TableHead className="text-right">请求次数</TableHead>
-                <TableHead className="text-right">Token 用量</TableHead>
+                <TableHead className="text-right">输入 Token</TableHead>
+                <TableHead className="text-right">输出 Token</TableHead>
+                <TableHead className="text-right">总 Token</TableHead>
+                <TableHead className="text-right">预估费用</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {data!.stats.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={3} className="h-24 text-center">
+                  <TableCell colSpan={6} className="h-24 text-center">
                     <p className="text-muted-foreground">暂无数据</p>
                   </TableCell>
                 </TableRow>
@@ -155,7 +187,16 @@ export default function UsagePage() {
                       {row.requestCount.toLocaleString()}
                     </TableCell>
                     <TableCell className="text-right">
+                      {row.promptTokens.toLocaleString()}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {row.completionTokens.toLocaleString()}
+                    </TableCell>
+                    <TableCell className="text-right">
                       {row.tokenUsage.toLocaleString()}
+                    </TableCell>
+                    <TableCell className="text-right font-medium text-emerald-600 dark:text-emerald-400">
+                      {formatUSD(row.cost)}
                     </TableCell>
                   </TableRow>
                 ))
