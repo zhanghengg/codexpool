@@ -5,6 +5,17 @@
  * Upstream: https://chatgpt.com/backend-api/codex/v1/responses
  */
 
+// ─── Model downgrade for free-tier upstream accounts ───────────────
+
+const MODEL_DOWNGRADE_MAP: Record<string, string> = {
+  "gpt-5.3-codex": "gpt-5.2-codex",
+  "gpt-5.4": "gpt-5.2",
+};
+
+export function mapModelForUpstream(model: string): string {
+  return MODEL_DOWNGRADE_MAP[model] ?? model;
+}
+
 // ─── Request conversion: OpenAI → Codex ────────────────────────────
 
 interface OpenAIChatMessage {
@@ -101,8 +112,11 @@ export function convertChatRequestToCodex(body: Record<string, unknown>): {
   const { instructions, input } = convertMessagesToCodexInput(messages);
   const userWantsStream = body.stream === true;
 
+  const rawModel = (body.model as string) || "gpt-5.3-codex";
+  const model = mapModelForUpstream(rawModel);
+
   const codexRequest: Record<string, unknown> = {
-    model: body.model || "gpt-5.3-codex",
+    model,
     instructions,
     input,
     stream: true, // Codex backend requires stream=true

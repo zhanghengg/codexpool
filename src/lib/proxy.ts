@@ -11,16 +11,8 @@ import {
   convertChatRequestToCodex,
   convertCodexResponseToChat,
   createCodexStreamTransformer,
+  mapModelForUpstream,
 } from "./codex-adapter";
-
-const MODEL_DOWNGRADE_MAP: Record<string, string> = {
-  "gpt-5.3-codex": "gpt-5.2-codex",
-  "gpt-5.4": "gpt-5.2",
-};
-
-function mapModelForUpstream(model: string): string {
-  return MODEL_DOWNGRADE_MAP[model] ?? model;
-}
 
 const MAX_RETRIES = 2;
 const CODEX_ENDPOINT = "/responses";
