@@ -318,6 +318,13 @@ export async function proxyResponsesRequest(
     upstreamBody.include = ["reasoning.encrypted_content"];
   }
 
+  if (rawModel !== model) {
+    const text = upstreamBody.text as Record<string, unknown> | undefined;
+    if (text && "verbosity" in text) {
+      delete text.verbosity;
+    }
+  }
+
   const codexBody = JSON.stringify(upstreamBody);
 
   const triedIds: string[] = [];
