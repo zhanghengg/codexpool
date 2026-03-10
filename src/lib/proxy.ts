@@ -13,10 +13,19 @@ import {
   createCodexStreamTransformer,
 } from "./codex-adapter";
 
+const MODEL_DOWNGRADE_MAP: Record<string, string> = {
+  "gpt-5.3-codex": "gpt-5.2-codex",
+  "gpt-5.4": "gpt-5.2",
+};
+
+function mapModelForUpstream(model: string): string {
+  return MODEL_DOWNGRADE_MAP[model] ?? model;
+}
+
 const MAX_RETRIES = 2;
 const CODEX_ENDPOINT = "/responses";
-const CODEX_USER_AGENT = "codex_cli_rs/0.101.0 (Mac OS 26.0.1; arm64) Apple_Terminal/464";
-const CODEX_VERSION = "0.101.0";
+const CODEX_USER_AGENT = "codex_cli_rs/0.112.0 (Mac OS 26.0.1; arm64) Apple_Terminal/464";
+const CODEX_VERSION = "0.112.0";
 
 function randomSessionId(): string {
   const bytes = new Uint8Array(16);
@@ -293,10 +302,12 @@ export async function proxyResponsesRequest(
   }
 
   const userWantsStream = parsedBody.stream !== false;
-  const model = (parsedBody.model as string) || "gpt-5.3-codex";
+  const rawModel = (parsedBody.model as string) || "gpt-5.3-codex";
+  const model = mapModelForUpstream(rawModel);
 
   const upstreamBody: Record<string, unknown> = {
     ...parsedBody,
+    model,
     stream: true,
     store: parsedBody.store ?? false,
   };
