@@ -21,15 +21,29 @@ export interface UpstreamAccountData {
   tokenExpiry: Date;
 }
 
+const pendingRefreshes = new Set<string>();
+
 export async function ensureFreshToken(account: UpstreamAccountData): Promise<string | null> {
   const now = new Date();
-  const expiryThreshold = new Date(now.getTime() + TOKEN_REFRESH_BUFFER_MS);
 
-  if (account.tokenExpiry > expiryThreshold) {
+  // Token still valid — return immediately
+  if (account.tokenExpiry > now) {
+    const bufferThreshold = new Date(now.getTime() + TOKEN_REFRESH_BUFFER_MS);
+    if (account.tokenExpiry <= bufferThreshold && !pendingRefreshes.has(account.id)) {
+      // Near expiry: trigger non-blocking background refresh
+      pendingRefreshes.add(account.id);
+      doRefresh(account).finally(() => pendingRefreshes.delete(account.id));
+    }
     return account.accessToken;
   }
 
+  // Token expired — must refresh synchronously
+  return doRefresh(account);
+}
+
+async function doRefresh(account: UpstreamAccountData): Promise<string | null> {
   try {
+    const now = new Date();
     const response = await fetch(OPENAI_TOKEN_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -42,10 +56,10 @@ export async function ensureFreshToken(account: UpstreamAccountData): Promise<st
 
     if (!response.ok) {
       console.error(`[token-refresh] Failed for ${account.email}: ${response.status}`);
-      await prisma.upstreamAccount.update({
+      prisma.upstreamAccount.update({
         where: { id: account.id },
         data: { isHealthy: false },
-      });
+      }).catch(() => {});
       return null;
     }
 
@@ -64,6 +78,10 @@ export async function ensureFreshToken(account: UpstreamAccountData): Promise<st
         errorCount: 0,
       },
     });
+
+    // Update in-memory account data so subsequent uses within cache TTL see fresh token
+    account.accessToken = data.access_token;
+    account.tokenExpiry = newExpiry;
 
     return data.access_token;
   } catch (err) {

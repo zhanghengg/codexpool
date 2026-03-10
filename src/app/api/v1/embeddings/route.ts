@@ -4,9 +4,12 @@ import { checkRateLimit } from "@/lib/rate-limiter";
 import { proxyRequest } from "@/lib/proxy";
 
 export async function POST(request: Request) {
-  const auth = await authenticateApiKey(
-    request.headers.get("authorization")
-  );
+  const authHeader = request.headers.get("authorization");
+
+  const [auth, rawBody] = await Promise.all([
+    authenticateApiKey(authHeader),
+    request.text(),
+  ]);
 
   if (!auth) {
     return new Response(
@@ -26,14 +29,19 @@ export async function POST(request: Request) {
     );
   }
 
-  let model: string | undefined;
+  let parsedBody: Record<string, unknown>;
   try {
-    const cloned = request.clone();
-    const body = await cloned.json();
-    model = body.model;
+    parsedBody = JSON.parse(rawBody);
   } catch {
-    // ignore
+    return new Response(
+      JSON.stringify({
+        error: { message: "Invalid request body", type: "invalid_request_error" },
+      }),
+      { status: 400, headers: { "Content-Type": "application/json" } }
+    );
   }
+
+  const model = parsedBody.model as string | undefined;
 
   const quota = await checkQuota(auth.userId, model);
   if (!quota.allowed) {
@@ -72,7 +80,7 @@ export async function POST(request: Request) {
 
   incrementRequestCount(quota.subscriptionId!).catch(() => {});
 
-  return proxyRequest(request, {
+  return proxyRequest(parsedBody, {
     userId: auth.userId,
     apiKeyId: auth.apiKeyId,
     subscriptionId: quota.subscriptionId!,

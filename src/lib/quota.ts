@@ -14,10 +14,19 @@ interface QuotaCheckResult {
   };
 }
 
+const QUOTA_CACHE_TTL_MS = 5_000;
+const quotaCache = new Map<string, { result: QuotaCheckResult; expiresAt: number }>();
+
 export async function checkQuota(
   userId: string,
   model?: string
 ): Promise<QuotaCheckResult> {
+  const cacheKey = `${userId}:${model || "*"}`;
+  const cached = quotaCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.result;
+  }
+
   const subscription = await prisma.subscription.findFirst({
     where: { userId, isActive: true },
     include: { plan: true },
@@ -30,16 +39,16 @@ export async function checkQuota(
 
   const now = new Date();
   if (now > subscription.expireAt) {
-    await prisma.subscription.update({
+    prisma.subscription.update({
       where: { id: subscription.id },
       data: { isActive: false },
-    });
+    }).catch(() => {});
     return { allowed: false, reason: "Subscription expired" };
   }
 
   const todayStart = startOfDay(now);
   if (subscription.dailyResetAt < todayStart) {
-    await prisma.subscription.update({
+    prisma.subscription.update({
       where: { id: subscription.id },
       data: {
         dailyRequestsUsed: 0,
@@ -47,7 +56,7 @@ export async function checkQuota(
         dailyCostUsed: 0,
         dailyResetAt: todayStart,
       },
-    });
+    }).catch(() => {});
     subscription.dailyRequestsUsed = 0;
     subscription.dailyTokensUsed = 0;
     subscription.dailyCostUsed = 0;
@@ -92,7 +101,7 @@ export async function checkQuota(
     };
   }
 
-  return {
+  const result: QuotaCheckResult = {
     allowed: true,
     subscriptionId: subscription.id,
     plan: {
@@ -102,6 +111,9 @@ export async function checkQuota(
       allowedModels: subscription.plan.allowedModels,
     },
   };
+
+  quotaCache.set(cacheKey, { result, expiresAt: Date.now() + QUOTA_CACHE_TTL_MS });
+  return result;
 }
 
 export async function consumeQuota(

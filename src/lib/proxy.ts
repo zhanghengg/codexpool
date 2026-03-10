@@ -41,20 +41,9 @@ interface ProxyContext {
 }
 
 export async function proxyRequest(
-  request: Request,
+  parsedBody: Record<string, unknown>,
   ctx: ProxyContext
 ): Promise<Response> {
-  const rawBody = await request.text();
-  let parsedBody: Record<string, unknown> = {};
-  try {
-    parsedBody = JSON.parse(rawBody);
-  } catch {
-    return new Response(
-      JSON.stringify({ error: { message: "Invalid request body", type: "invalid_request_error" } }),
-      { status: 400, headers: { "Content-Type": "application/json" } }
-    );
-  }
-
   const { codexBody, isStream } = convertChatRequestToCodex(parsedBody);
   const model = (parsedBody.model as string) || "gpt-5.3-codex";
 
@@ -105,7 +94,7 @@ export async function proxyRequest(
 
       if (!upstreamResponse.ok) {
         const errorText = await upstreamResponse.text();
-        await reportUpstreamError(upstream.id);
+        reportUpstreamError(upstream.id).catch(() => {});
         lastError = errorText;
 
         logUsage(ctx, upstream, startTime, upstreamResponse.status, errorText).catch(() => {});
@@ -128,10 +117,9 @@ export async function proxyRequest(
         return handleStreamResponse(upstreamResponse, ctx, upstream, startTime, model);
       }
 
-      // Codex backend always streams; collect full SSE and convert to JSON for non-stream requests
       return collectStreamToJson(upstreamResponse, ctx, upstream, startTime, model);
     } catch (err) {
-      await reportUpstreamError(upstream.id);
+      reportUpstreamError(upstream.id).catch(() => {});
       lastError = err instanceof Error ? err.message : "Unknown error";
       logUsage(ctx, upstream, startTime, 500, lastError).catch(() => {});
       continue;
@@ -279,20 +267,9 @@ async function collectStreamToJson(
 // ─── Responses API: pass-through proxy ─────────────────────────────
 
 export async function proxyResponsesRequest(
-  request: Request,
+  parsedBody: Record<string, unknown>,
   ctx: ProxyContext
 ): Promise<Response> {
-  const rawBody = await request.text();
-  let parsedBody: Record<string, unknown> = {};
-  try {
-    parsedBody = JSON.parse(rawBody);
-  } catch {
-    return new Response(
-      JSON.stringify({ error: { message: "Invalid request body", type: "invalid_request_error" } }),
-      { status: 400, headers: { "Content-Type": "application/json" } }
-    );
-  }
-
   const userWantsStream = parsedBody.stream !== false;
   const rawModel = (parsedBody.model as string) || "gpt-5.3-codex";
   const model = mapModelForUpstream(rawModel);
@@ -366,7 +343,7 @@ export async function proxyResponsesRequest(
 
       if (!upstreamResponse.ok) {
         const errorText = await upstreamResponse.text();
-        await reportUpstreamError(upstream.id);
+        reportUpstreamError(upstream.id).catch(() => {});
         lastError = errorText;
 
         logUsage(ctx, upstream, startTime, upstreamResponse.status, errorText).catch(() => {});
@@ -391,7 +368,7 @@ export async function proxyResponsesRequest(
 
       return collectResponsesToJson(upstreamResponse, ctx, upstream, startTime);
     } catch (err) {
-      await reportUpstreamError(upstream.id);
+      reportUpstreamError(upstream.id).catch(() => {});
       lastError = err instanceof Error ? err.message : "Unknown error";
       logUsage(ctx, upstream, startTime, 500, lastError).catch(() => {});
       continue;

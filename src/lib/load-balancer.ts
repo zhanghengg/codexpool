@@ -14,6 +14,7 @@ type UpstreamRow = Awaited<ReturnType<typeof prisma.upstreamAccount.findMany>>[n
 
 const CACHE_TTL_MS = 10_000;
 let cachedAccounts: UpstreamRow[] = [];
+let cachedWeighted: UpstreamRow[] = [];
 let cacheTimestamp = 0;
 
 async function getHealthyAccounts(): Promise<UpstreamRow[]> {
@@ -25,6 +26,14 @@ async function getHealthyAccounts(): Promise<UpstreamRow[]> {
     where: { isActive: true, isHealthy: true },
     orderBy: { weight: "desc" },
   });
+
+  cachedWeighted = [];
+  for (const a of cachedAccounts) {
+    for (let i = 0; i < a.weight; i++) {
+      cachedWeighted.push(a);
+    }
+  }
+
   cacheTimestamp = now;
   return cachedAccounts;
 }
@@ -35,31 +44,28 @@ export function invalidateUpstreamCache() {
 
 let roundRobinIndex = 0;
 
+function toUpstreamInfo(row: UpstreamRow, token: string): UpstreamInfo {
+  return {
+    id: row.id,
+    name: row.name,
+    accessToken: token,
+    accountId: row.accountId,
+    baseUrl: row.baseUrl,
+    weight: row.weight,
+  };
+}
+
 export async function selectUpstream(): Promise<UpstreamInfo | null> {
-  const accounts = await getHealthyAccounts();
-  if (accounts.length === 0) return null;
+  await getHealthyAccounts();
+  if (cachedWeighted.length === 0) return null;
 
-  const weighted: UpstreamRow[] = [];
-  for (const a of accounts) {
-    for (let i = 0; i < a.weight; i++) {
-      weighted.push(a);
-    }
-  }
-
-  roundRobinIndex = (roundRobinIndex + 1) % weighted.length;
-  const selected = weighted[roundRobinIndex];
+  roundRobinIndex = (roundRobinIndex + 1) % cachedWeighted.length;
+  const selected = cachedWeighted[roundRobinIndex];
 
   const freshToken = await ensureFreshToken(selected);
   if (!freshToken) return null;
 
-  return {
-    id: selected.id,
-    name: selected.name,
-    accessToken: freshToken,
-    accountId: selected.accountId,
-    baseUrl: selected.baseUrl,
-    weight: selected.weight,
-  };
+  return toUpstreamInfo(selected, freshToken);
 }
 
 export async function selectUpstreamExcluding(
@@ -75,14 +81,7 @@ export async function selectUpstreamExcluding(
   const freshToken = await ensureFreshToken(selected);
   if (!freshToken) return null;
 
-  return {
-    id: selected.id,
-    name: selected.name,
-    accessToken: freshToken,
-    accountId: selected.accountId,
-    baseUrl: selected.baseUrl,
-    weight: selected.weight,
-  };
+  return toUpstreamInfo(selected, freshToken);
 }
 
 const CIRCUIT_BREAKER_THRESHOLD = 5;
