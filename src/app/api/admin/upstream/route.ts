@@ -62,6 +62,39 @@ export async function GET() {
   }
 }
 
+const batchDeleteSchema = z.object({
+  ids: z.array(z.string().min(1)).min(1),
+});
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const auth = await requireAdmin();
+    if (auth instanceof NextResponse) return auth;
+
+    const body = await request.json();
+    const parsed = batchDeleteSchema.safeParse(body);
+
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Invalid input", details: parsed.error.flatten() },
+        { status: 400 }
+      );
+    }
+
+    const result = await prisma.upstreamAccount.deleteMany({
+      where: { id: { in: parsed.data.ids } },
+    });
+
+    return NextResponse.json({ deleted: result.count });
+  } catch (error) {
+    console.error("[admin/upstream DELETE]", error);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const auth = await requireAdmin();

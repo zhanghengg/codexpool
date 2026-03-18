@@ -55,6 +55,8 @@ export default function AdminUpstreamPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [actioning, setActioning] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [batchDeleting, setBatchDeleting] = useState(false);
   const [tokenJson, setTokenJson] = useState("");
   const [files, setFiles] = useState<FileInfo[]>([]);
 
@@ -180,6 +182,46 @@ export default function AdminUpstreamPage() {
     setFiles((prev) => prev.filter((_, i) => i !== index));
   }
 
+  function toggleSelect(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    if (selected.size === upstreams.length) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(upstreams.map((u) => u.id)));
+    }
+  }
+
+  async function batchDelete() {
+    const count = selected.size;
+    if (count === 0) return;
+    if (!confirm(`确定要删除选中的 ${count} 个上游账户吗？此操作不可恢复。`)) return;
+
+    setBatchDeleting(true);
+    try {
+      const res = await fetch("/api/admin/upstream", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: Array.from(selected) }),
+      });
+      if (!res.ok) throw new Error("批量删除失败");
+      const data = await res.json();
+      setUpstreams((prev) => prev.filter((x) => !selected.has(x.id)));
+      setSelected(new Set());
+      toast.success(`已删除 ${data.deleted} 个账户`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "批量删除失败");
+    } finally {
+      setBatchDeleting(false);
+    }
+  }
+
   async function toggleActive(u: Upstream) {
     setActioning(u.id);
     try {
@@ -293,7 +335,28 @@ export default function AdminUpstreamPage() {
   return (
     <div className="p-6">
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">上游账户</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-bold">上游账户</h1>
+          {selected.size > 0 && (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">已选 {selected.size} 项</span>
+              <Button
+                variant="destructive" size="sm"
+                onClick={batchDelete}
+                disabled={batchDeleting}
+              >
+                <Trash2 className="mr-1 size-3" />
+                {batchDeleting ? "删除中..." : "批量删除"}
+              </Button>
+              <Button
+                variant="outline" size="sm"
+                onClick={() => setSelected(new Set())}
+              >
+                取消选择
+              </Button>
+            </div>
+          )}
+        </div>
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
           <DialogTrigger asChild>
             <Button>
@@ -412,6 +475,16 @@ export default function AdminUpstreamPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-[40px]">
+                    <input
+                      type="checkbox"
+                      aria-label="全选"
+                      className="size-4 rounded border-border accent-primary cursor-pointer"
+                      checked={upstreams.length > 0 && selected.size === upstreams.length}
+                      ref={(el) => { if (el) el.indeterminate = selected.size > 0 && selected.size < upstreams.length; }}
+                      onChange={toggleSelectAll}
+                    />
+                  </TableHead>
                   <TableHead>名称</TableHead>
                   <TableHead>邮箱</TableHead>
                   <TableHead>Token 过期</TableHead>
@@ -425,7 +498,16 @@ export default function AdminUpstreamPage() {
               </TableHeader>
               <TableBody>
                 {upstreams.map((u) => (
-                  <TableRow key={u.id}>
+                  <TableRow key={u.id} data-selected={selected.has(u.id) || undefined}>
+                    <TableCell>
+                      <input
+                        type="checkbox"
+                        aria-label={`选择 ${u.name}`}
+                        className="size-4 rounded border-border accent-primary cursor-pointer"
+                        checked={selected.has(u.id)}
+                        onChange={() => toggleSelect(u.id)}
+                      />
+                    </TableCell>
                     <TableCell className="font-medium">{u.name}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">{u.email}</TableCell>
                     <TableCell>
