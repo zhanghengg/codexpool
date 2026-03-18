@@ -1,4 +1,5 @@
 import { prisma } from "./db";
+import { invalidateUpstreamCache } from "./load-balancer";
 
 const OPENAI_TOKEN_URL = "https://auth.openai.com/oauth/token";
 const CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
@@ -56,10 +57,11 @@ async function doRefresh(account: UpstreamAccountData): Promise<string | null> {
 
     if (!response.ok) {
       console.error(`[token-refresh] Failed for ${account.email}: ${response.status}`);
-      prisma.upstreamAccount.update({
+      await prisma.upstreamAccount.update({
         where: { id: account.id },
         data: { isHealthy: false },
-      }).catch(() => {});
+      });
+      invalidateUpstreamCache();
       return null;
     }
 

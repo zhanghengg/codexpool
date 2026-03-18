@@ -59,13 +59,17 @@ export async function selectUpstream(): Promise<UpstreamInfo | null> {
   await getHealthyAccounts();
   if (cachedWeighted.length === 0) return null;
 
-  roundRobinIndex = (roundRobinIndex + 1) % cachedWeighted.length;
-  const selected = cachedWeighted[roundRobinIndex];
-
-  const freshToken = await ensureFreshToken(selected);
-  if (!freshToken) return null;
-
-  return toUpstreamInfo(selected, freshToken);
+  const startIdx = (roundRobinIndex + 1) % cachedWeighted.length;
+  for (let i = 0; i < cachedWeighted.length; i++) {
+    const idx = (startIdx + i) % cachedWeighted.length;
+    const selected = cachedWeighted[idx];
+    const freshToken = await ensureFreshToken(selected);
+    if (freshToken) {
+      roundRobinIndex = idx;
+      return toUpstreamInfo(selected, freshToken);
+    }
+  }
+  return null;
 }
 
 export async function selectUpstreamExcluding(
@@ -75,13 +79,16 @@ export async function selectUpstreamExcluding(
   const filtered = accounts.filter((a) => !excludeIds.includes(a.id));
   if (filtered.length === 0) return null;
 
-  const idx = Math.floor(Math.random() * filtered.length);
-  const selected = filtered[idx];
-
-  const freshToken = await ensureFreshToken(selected);
-  if (!freshToken) return null;
-
-  return toUpstreamInfo(selected, freshToken);
+  const startIdx = Math.floor(Math.random() * filtered.length);
+  for (let i = 0; i < filtered.length; i++) {
+    const idx = (startIdx + i) % filtered.length;
+    const selected = filtered[idx];
+    const freshToken = await ensureFreshToken(selected);
+    if (freshToken) {
+      return toUpstreamInfo(selected, freshToken);
+    }
+  }
+  return null;
 }
 
 const CIRCUIT_BREAKER_THRESHOLD = 5;

@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { Plus, RefreshCw, Trash2, Power, PowerOff, Upload, X } from "lucide-react";
+import { Plus, RefreshCw, Trash2, Power, PowerOff, Upload, X, ShieldCheck } from "lucide-react";
 
 interface Upstream {
   id: string;
@@ -220,6 +220,38 @@ export default function AdminUpstreamPage() {
     }
   }
 
+  async function checkHealth(u: Upstream) {
+    setActioning(u.id);
+    try {
+      const res = await fetch(`/api/admin/upstream/${u.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "checkHealth" }),
+      });
+      if (!res.ok) throw new Error("检测失败");
+      const data = await res.json();
+      if (data.checkStatus === "ok") {
+        setUpstreams((prev) =>
+          prev.map((x) => (x.id === u.id ? { ...x, isHealthy: true, errorCount: 0 } : x))
+        );
+        toast.success(data.message);
+      } else if (data.checkStatus === "banned") {
+        setUpstreams((prev) =>
+          prev.map((x) =>
+            x.id === u.id ? { ...x, isHealthy: false, isActive: false } : x
+          )
+        );
+        toast.error(data.message);
+      } else {
+        toast.warning(data.message);
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "检测失败");
+    } finally {
+      setActioning(null);
+    }
+  }
+
   async function deleteUpstream(u: Upstream) {
     if (!confirm(`确定要删除上游「${u.name}」吗？此操作不可恢复。`)) return;
     setActioning(u.id);
@@ -388,7 +420,7 @@ export default function AdminUpstreamPage() {
                   <TableHead>健康</TableHead>
                   <TableHead>错误</TableHead>
                   <TableHead>已用</TableHead>
-                  <TableHead className="w-[140px]">操作</TableHead>
+                  <TableHead className="w-[180px]">操作</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -431,6 +463,14 @@ export default function AdminUpstreamPage() {
                           title="重置健康"
                         >
                           <RefreshCw className="size-3" />
+                        </Button>
+                        <Button
+                          variant="outline" size="sm"
+                          onClick={() => checkHealth(u)}
+                          disabled={actioning === u.id}
+                          title="检测封禁"
+                        >
+                          <ShieldCheck className="size-3" />
                         </Button>
                         <Button
                           variant="destructive" size="sm"

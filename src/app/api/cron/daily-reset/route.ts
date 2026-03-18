@@ -33,7 +33,7 @@ export async function GET(request: Request) {
   });
 
   await prisma.upstreamAccount.updateMany({
-    where: { isHealthy: false },
+    where: { isHealthy: false, errorCount: { lt: 5 } },
     data: { isHealthy: true, errorCount: 0 },
   });
 

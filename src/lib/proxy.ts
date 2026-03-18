@@ -94,12 +94,12 @@ export async function proxyRequest(
 
       if (!upstreamResponse.ok) {
         const errorText = await upstreamResponse.text();
-        reportUpstreamError(upstream.id).catch(() => {});
+        await reportUpstreamError(upstream.id);
         lastError = errorText;
 
         logUsage(ctx, upstream, startTime, upstreamResponse.status, errorText).catch(() => {});
 
-        if (upstreamResponse.status === 429 || upstreamResponse.status >= 500) {
+        if ([401, 403, 429].includes(upstreamResponse.status) || upstreamResponse.status >= 500) {
           continue;
         }
 
@@ -111,7 +111,7 @@ export async function proxyRequest(
         );
       }
 
-      reportUpstreamSuccess(upstream.id).catch(() => {});
+      await reportUpstreamSuccess(upstream.id);
 
       if (isStream) {
         return handleStreamResponse(upstreamResponse, ctx, upstream, startTime, model);
@@ -119,7 +119,7 @@ export async function proxyRequest(
 
       return collectStreamToJson(upstreamResponse, ctx, upstream, startTime, model);
     } catch (err) {
-      reportUpstreamError(upstream.id).catch(() => {});
+      await reportUpstreamError(upstream.id);
       lastError = err instanceof Error ? err.message : "Unknown error";
       logUsage(ctx, upstream, startTime, 500, lastError).catch(() => {});
       continue;
@@ -343,12 +343,12 @@ export async function proxyResponsesRequest(
 
       if (!upstreamResponse.ok) {
         const errorText = await upstreamResponse.text();
-        reportUpstreamError(upstream.id).catch(() => {});
+        await reportUpstreamError(upstream.id);
         lastError = errorText;
 
         logUsage(ctx, upstream, startTime, upstreamResponse.status, errorText).catch(() => {});
 
-        if (upstreamResponse.status === 429 || upstreamResponse.status >= 500) {
+        if ([401, 403, 429].includes(upstreamResponse.status) || upstreamResponse.status >= 500) {
           continue;
         }
 
@@ -360,7 +360,7 @@ export async function proxyResponsesRequest(
         );
       }
 
-      reportUpstreamSuccess(upstream.id).catch(() => {});
+      await reportUpstreamSuccess(upstream.id);
 
       if (userWantsStream) {
         return handleResponsesStreamPassthrough(upstreamResponse, ctx, upstream, startTime);
@@ -368,7 +368,7 @@ export async function proxyResponsesRequest(
 
       return collectResponsesToJson(upstreamResponse, ctx, upstream, startTime);
     } catch (err) {
-      reportUpstreamError(upstream.id).catch(() => {});
+      await reportUpstreamError(upstream.id);
       lastError = err instanceof Error ? err.message : "Unknown error";
       logUsage(ctx, upstream, startTime, 500, lastError).catch(() => {});
       continue;

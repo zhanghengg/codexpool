@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/admin-auth";
+import { ensureFreshToken } from "@/lib/token-refresh";
+import { invalidateUpstreamCache } from "@/lib/load-balancer";
 import { z } from "zod";
 
 const updateUpstreamSchema = z.object({
@@ -12,7 +14,7 @@ const updateUpstreamSchema = z.object({
 });
 
 const patchUpstreamSchema = z.object({
-  action: z.enum(["toggleActive", "resetHealth"]),
+  action: z.enum(["toggleActive", "resetHealth", "checkHealth"]),
 });
 
 export async function PUT(
@@ -102,6 +104,10 @@ export async function PATCH(
       return NextResponse.json({ error: "Upstream not found" }, { status: 404 });
     }
 
+    if (parsed.data.action === "checkHealth") {
+      return handleCheckHealth(upstream);
+    }
+
     const data: Record<string, unknown> = {};
     if (parsed.data.action === "toggleActive") {
       data.isActive = !upstream.isActive;
@@ -111,6 +117,7 @@ export async function PATCH(
     }
 
     const updated = await prisma.upstreamAccount.update({ where: { id }, data });
+    invalidateUpstreamCache();
     return NextResponse.json({
       ...updated,
       accessToken: undefined,
@@ -120,6 +127,97 @@ export async function PATCH(
   } catch (error) {
     console.error("[admin/upstream/[id] PATCH]", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}
+
+const CODEX_USER_AGENT = "codex_cli_rs/0.112.0 (Mac OS 26.0.1; arm64) Apple_Terminal/464";
+
+async function handleCheckHealth(upstream: {
+  id: string;
+  email: string;
+  accessToken: string;
+  refreshToken: string;
+  idToken: string | null;
+  tokenExpiry: Date;
+  baseUrl: string;
+  accountId: string;
+}) {
+  const freshToken = await ensureFreshToken(upstream);
+  if (!freshToken) {
+    await prisma.upstreamAccount.update({
+      where: { id: upstream.id },
+      data: { isHealthy: false, isActive: false },
+    });
+    invalidateUpstreamCache();
+    return NextResponse.json({
+      checkStatus: "banned",
+      message: "Token 刷新失败，账号可能已被封禁，已自动停用",
+    });
+  }
+
+  try {
+    const testBody = JSON.stringify({
+      model: "gpt-5.2",
+      instructions: "Reply with OK",
+      input: "hi",
+      stream: false,
+      store: false,
+      max_output_tokens: 4,
+    });
+
+    const resp = await fetch(`${upstream.baseUrl}/responses`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "text/event-stream",
+        Authorization: `Bearer ${freshToken}`,
+        "User-Agent": CODEX_USER_AGENT,
+        "Openai-Beta": "responses=experimental",
+        Version: "0.112.0",
+        Originator: "codex_cli_rs",
+        "Chatgpt-Account-Id": upstream.accountId,
+      },
+      body: testBody,
+      signal: AbortSignal.timeout(15_000),
+    });
+
+    if (resp.ok) {
+      await resp.text();
+      await prisma.upstreamAccount.update({
+        where: { id: upstream.id },
+        data: { isHealthy: true, errorCount: 0 },
+      });
+      invalidateUpstreamCache();
+      return NextResponse.json({
+        checkStatus: "ok",
+        message: "账号正常",
+      });
+    }
+
+    const errorText = await resp.text().catch(() => "");
+
+    if (resp.status === 401 || resp.status === 403) {
+      await prisma.upstreamAccount.update({
+        where: { id: upstream.id },
+        data: { isHealthy: false, isActive: false, errorCount: 5 },
+      });
+      invalidateUpstreamCache();
+      return NextResponse.json({
+        checkStatus: "banned",
+        message: `账号已被封禁 (HTTP ${resp.status})，已自动停用`,
+      });
+    }
+
+    return NextResponse.json({
+      checkStatus: "error",
+      message: `上游返回异常 (HTTP ${resp.status}): ${errorText.slice(0, 200)}`,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return NextResponse.json({
+      checkStatus: "error",
+      message: `请求失败: ${message}`,
+    });
   }
 }
 
