@@ -14,19 +14,17 @@ interface QuotaCheckResult {
   };
 }
 
-const QUOTA_CACHE_TTL_MS = 5_000;
-const quotaCache = new Map<string, { result: QuotaCheckResult; expiresAt: number }>();
-
+/**
+ * Reads subscription + plan, validates expiry / daily reset / model access,
+ * and performs an early (non-atomic) limit check for fast rejection.
+ *
+ * The authoritative limit enforcement happens in `consumeRequestSlot`,
+ * which uses a conditional UPDATE to guarantee atomicity.
+ */
 export async function checkQuota(
   userId: string,
   model?: string
 ): Promise<QuotaCheckResult> {
-  const cacheKey = `${userId}:${model || "*"}`;
-  const cached = quotaCache.get(cacheKey);
-  if (cached && cached.expiresAt > Date.now()) {
-    return cached.result;
-  }
-
   const subscription = await prisma.subscription.findFirst({
     where: { userId, isActive: true },
     include: { plan: true },
@@ -38,25 +36,29 @@ export async function checkQuota(
   }
 
   const now = new Date();
+
   if (now > subscription.expireAt) {
-    prisma.subscription.update({
+    await prisma.subscription.update({
       where: { id: subscription.id },
       data: { isActive: false },
-    }).catch(() => {});
+    });
     return { allowed: false, reason: "Subscription expired" };
   }
 
   const todayStart = startOfDay(now);
   if (subscription.dailyResetAt < todayStart) {
-    prisma.subscription.update({
-      where: { id: subscription.id },
+    await prisma.subscription.updateMany({
+      where: {
+        id: subscription.id,
+        dailyResetAt: { lt: todayStart },
+      },
       data: {
         dailyRequestsUsed: 0,
         dailyTokensUsed: 0,
         dailyCostUsed: 0,
         dailyResetAt: todayStart,
       },
-    }).catch(() => {});
+    });
     subscription.dailyRequestsUsed = 0;
     subscription.dailyTokensUsed = 0;
     subscription.dailyCostUsed = 0;
@@ -101,7 +103,7 @@ export async function checkQuota(
     };
   }
 
-  const result: QuotaCheckResult = {
+  return {
     allowed: true,
     subscriptionId: subscription.id,
     plan: {
@@ -111,46 +113,31 @@ export async function checkQuota(
       allowedModels: subscription.plan.allowedModels,
     },
   };
-
-  quotaCache.set(cacheKey, { result, expiresAt: Date.now() + QUOTA_CACHE_TTL_MS });
-  return result;
-}
-
-export async function consumeQuota(
-  subscriptionId: string,
-  totalTokens: number
-) {
-  await prisma.subscription.update({
-    where: { id: subscriptionId },
-    data: {
-      dailyRequestsUsed: { increment: 1 },
-      dailyTokensUsed: { increment: totalTokens },
-      totalTokensUsed: { increment: totalTokens },
-    },
-  });
-}
-
-export async function incrementRequestCount(subscriptionId: string) {
-  await prisma.subscription.update({
-    where: { id: subscriptionId },
-    data: { dailyRequestsUsed: { increment: 1 } },
-  });
 }
 
 /**
- * @deprecated Use addUsage instead for accurate cost tracking.
+ * Atomically increments `dailyRequestsUsed` only when ALL plan limits
+ * (daily requests, daily tokens, daily cost, total tokens) are still
+ * within bounds. Returns `true` if the slot was consumed, `false` if
+ * any limit has been reached.
+ *
+ * Uses a conditional UPDATE with a JOIN against the Plan table so the
+ * check-and-increment is a single atomic SQL statement — no TOCTOU gap.
  */
-export async function addTokenUsage(
-  subscriptionId: string,
-  tokens: number
-) {
-  await prisma.subscription.update({
-    where: { id: subscriptionId },
-    data: {
-      dailyTokensUsed: { increment: tokens },
-      totalTokensUsed: { increment: tokens },
-    },
-  });
+export async function consumeRequestSlot(subscriptionId: string): Promise<boolean> {
+  const rowsAffected: number = await prisma.$executeRaw`
+    UPDATE "Subscription" s
+    SET "dailyRequestsUsed" = s."dailyRequestsUsed" + 1
+    FROM "Plan" p
+    WHERE s."id" = ${subscriptionId}
+      AND s."planId" = p."id"
+      AND s."isActive" = true
+      AND (p."dailyRequestLimit" = 0 OR s."dailyRequestsUsed" < p."dailyRequestLimit")
+      AND (p."dailyTokenLimit" = 0 OR s."dailyTokensUsed" < p."dailyTokenLimit")
+      AND (p."dailyCostLimit" = 0 OR s."dailyCostUsed" < p."dailyCostLimit")
+      AND (p."totalTokenLimit" = 0 OR s."totalTokensUsed" < p."totalTokenLimit")
+  `;
+  return rowsAffected > 0;
 }
 
 export async function addUsage(
@@ -161,12 +148,16 @@ export async function addUsage(
 ) {
   const totalTokens = promptTokens + completionTokens;
   const cost = estimateCost(promptTokens, completionTokens, model);
-  await prisma.subscription.update({
-    where: { id: subscriptionId },
-    data: {
-      dailyTokensUsed: { increment: totalTokens },
-      totalTokensUsed: { increment: totalTokens },
-      dailyCostUsed: { increment: cost },
-    },
-  });
+  try {
+    await prisma.subscription.update({
+      where: { id: subscriptionId },
+      data: {
+        dailyTokensUsed: { increment: totalTokens },
+        totalTokensUsed: { increment: totalTokens },
+        dailyCostUsed: { increment: cost },
+      },
+    });
+  } catch (err) {
+    console.error("[addUsage] Failed to update subscription usage:", err);
+  }
 }

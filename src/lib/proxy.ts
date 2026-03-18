@@ -7,6 +7,7 @@ import {
 } from "./load-balancer";
 import { prisma } from "./db";
 import { addUsage } from "./quota";
+import { estimateCost } from "./pricing";
 import {
   convertChatRequestToCodex,
   convertCodexResponseToChat,
@@ -97,7 +98,7 @@ export async function proxyRequest(
         await reportUpstreamError(upstream.id);
         lastError = errorText;
 
-        logUsage(ctx, upstream, startTime, upstreamResponse.status, errorText).catch(() => {});
+        void logUsage(ctx, upstream, startTime, upstreamResponse.status, errorText);
 
         if ([401, 403, 429].includes(upstreamResponse.status) || upstreamResponse.status >= 500) {
           continue;
@@ -121,7 +122,7 @@ export async function proxyRequest(
     } catch (err) {
       await reportUpstreamError(upstream.id);
       lastError = err instanceof Error ? err.message : "Unknown error";
-      logUsage(ctx, upstream, startTime, 500, lastError).catch(() => {});
+      void logUsage(ctx, upstream, startTime, 500, lastError);
       continue;
     }
   }
@@ -153,8 +154,8 @@ function handleStreamResponse(
   }
 
   const transformer = createCodexStreamTransformer(model, (usage) => {
-    addUsage(ctx.subscriptionId, usage.promptTokens, usage.completionTokens, model).catch(() => {});
-    logUsage(ctx, upstream, startTime, 200, null, usage).catch(() => {});
+    void addUsage(ctx.subscriptionId, usage.promptTokens, usage.completionTokens, model);
+    void logUsage(ctx, upstream, startTime, 200, null, usage);
   });
   const stream = upstreamBody.pipeThrough(transformer);
 
@@ -214,8 +215,8 @@ async function collectStreamToJson(
         responseId = (resp.id as string) || responseId;
         const u = resp.usage as Record<string, number> | undefined;
         if (u) {
-          inputTokens = u.input_tokens || u.prompt_tokens || 0;
-          outputTokens = u.output_tokens || u.completion_tokens || 0;
+          inputTokens = u.input_tokens ?? u.prompt_tokens ?? 0;
+          outputTokens = u.output_tokens ?? u.completion_tokens ?? 0;
         }
         if (!contentText && resp.output_text && typeof resp.output_text === "string") {
           contentText = resp.output_text;
@@ -234,12 +235,12 @@ async function collectStreamToJson(
   }
 
   const totalTokens = inputTokens + outputTokens;
-  addUsage(ctx.subscriptionId, inputTokens, outputTokens, model).catch(() => {});
-  logUsage(ctx, upstream, startTime, 200, null, {
+  void addUsage(ctx.subscriptionId, inputTokens, outputTokens, model);
+  void logUsage(ctx, upstream, startTime, 200, null, {
     promptTokens: inputTokens,
     completionTokens: outputTokens,
     totalTokens,
-  }).catch(() => {});
+  });
 
   const openaiResponse = {
     id: responseId,
@@ -346,7 +347,7 @@ export async function proxyResponsesRequest(
         await reportUpstreamError(upstream.id);
         lastError = errorText;
 
-        logUsage(ctx, upstream, startTime, upstreamResponse.status, errorText).catch(() => {});
+        void logUsage(ctx, upstream, startTime, upstreamResponse.status, errorText);
 
         if ([401, 403, 429].includes(upstreamResponse.status) || upstreamResponse.status >= 500) {
           continue;
@@ -370,7 +371,7 @@ export async function proxyResponsesRequest(
     } catch (err) {
       await reportUpstreamError(upstream.id);
       lastError = err instanceof Error ? err.message : "Unknown error";
-      logUsage(ctx, upstream, startTime, 500, lastError).catch(() => {});
+      void logUsage(ctx, upstream, startTime, 500, lastError);
       continue;
     }
   }
@@ -403,6 +404,7 @@ function handleResponsesStreamPassthrough(
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
   let buffer = "";
+  let usageRecorded = false;
 
   const transformer = new TransformStream<Uint8Array, Uint8Array>({
     transform(chunk, controller) {
@@ -421,19 +423,23 @@ function handleResponsesStreamPassthrough(
         try {
           const event = JSON.parse(payload) as Record<string, unknown>;
           const eventType = event.type as string | undefined;
-          if (eventType === "response.completed" || eventType === "response.done") {
+          if (
+            !usageRecorded &&
+            (eventType === "response.completed" || eventType === "response.done")
+          ) {
             const resp = event.response as Record<string, unknown> | undefined;
             const usage = resp?.usage as Record<string, number> | undefined;
             if (usage) {
-              const input = usage.input_tokens || 0;
-              const output = usage.output_tokens || 0;
+              usageRecorded = true;
+              const input = usage.input_tokens ?? 0;
+              const output = usage.output_tokens ?? 0;
               const total = input + output;
-              addUsage(ctx.subscriptionId, input, output, ctx.model).catch(() => {});
-              logUsage(ctx, upstream, startTime, 200, null, {
+              void addUsage(ctx.subscriptionId, input, output, ctx.model);
+              void logUsage(ctx, upstream, startTime, 200, null, {
                 promptTokens: input,
                 completionTokens: output,
                 totalTokens: total,
-              }).catch(() => {});
+              });
             }
           }
         } catch {
@@ -495,15 +501,15 @@ async function collectResponsesToJson(
   }
 
   const usage = finalResponse.usage as Record<string, number> | undefined;
-  const promptTokens = usage?.input_tokens || 0;
-  const completionTokens = usage?.output_tokens || 0;
+  const promptTokens = usage?.input_tokens ?? 0;
+  const completionTokens = usage?.output_tokens ?? 0;
   const totalTokens = promptTokens + completionTokens;
-  addUsage(ctx.subscriptionId, promptTokens, completionTokens, ctx.model).catch(() => {});
-  logUsage(ctx, upstream, startTime, 200, null, {
+  void addUsage(ctx.subscriptionId, promptTokens, completionTokens, ctx.model);
+  void logUsage(ctx, upstream, startTime, 200, null, {
     promptTokens,
     completionTokens,
     totalTokens,
-  }).catch(() => {});
+  });
 
   return new Response(JSON.stringify(finalResponse), {
     status: 200,
@@ -550,6 +556,8 @@ async function logUsage(
       totalTokens = tokens.totalTokens;
     }
 
+    const cost = estimateCost(promptTokens, completionTokens, ctx.model);
+
     await prisma.usageLog.create({
       data: {
         userId: ctx.userId,
@@ -560,12 +568,13 @@ async function logUsage(
         promptTokens,
         completionTokens,
         totalTokens,
+        cost,
         latencyMs: Date.now() - startTime,
         statusCode,
         errorMessage,
       },
     });
-  } catch {
-    // non-critical
+  } catch (err) {
+    console.error("[logUsage] Failed to create usage log:", err);
   }
 }

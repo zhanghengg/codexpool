@@ -1,5 +1,5 @@
 import { authenticateApiKey } from "@/lib/api-auth";
-import { checkQuota, incrementRequestCount } from "@/lib/quota";
+import { checkQuota, consumeRequestSlot } from "@/lib/quota";
 import { checkRateLimit } from "@/lib/rate-limiter";
 import { proxyResponsesRequest } from "@/lib/proxy";
 
@@ -53,7 +53,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const rateCheck = checkRateLimit(
+  const rateCheck = await checkRateLimit(
     `rpm:${auth.userId}`,
     quota.plan!.rpm,
     60_000
@@ -78,7 +78,15 @@ export async function POST(request: Request) {
     );
   }
 
-  incrementRequestCount(quota.subscriptionId!).catch(() => {});
+  const slotConsumed = await consumeRequestSlot(quota.subscriptionId!);
+  if (!slotConsumed) {
+    return new Response(
+      JSON.stringify({
+        error: { message: "Quota limit reached", type: "insufficient_quota" },
+      }),
+      { status: 429, headers: { "Content-Type": "application/json" } }
+    );
+  }
 
   return proxyResponsesRequest(parsedBody, {
     userId: auth.userId,

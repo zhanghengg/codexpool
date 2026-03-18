@@ -141,6 +141,7 @@ model UsageLog {
   promptTokens     Int             @default(0)
   completionTokens Int             @default(0)
   totalTokens      Int             @default(0)
+  cost             Float           @default(0)
   latencyMs        Int             @default(0)
   statusCode       Int             @default(200)
   errorMessage     String?

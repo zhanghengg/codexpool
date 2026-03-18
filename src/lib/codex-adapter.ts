@@ -205,8 +205,8 @@ export function convertCodexResponseToChat(codexData: Record<string, unknown>): 
   }
 
   const usage = codexData.usage as Record<string, number> | undefined;
-  const promptTokens = usage?.input_tokens || usage?.prompt_tokens || 0;
-  const completionTokens = usage?.output_tokens || usage?.completion_tokens || 0;
+  const promptTokens = usage?.input_tokens ?? usage?.prompt_tokens ?? 0;
+  const completionTokens = usage?.output_tokens ?? usage?.completion_tokens ?? 0;
 
   const message: Record<string, unknown> = {
     role: "assistant",
@@ -374,8 +374,8 @@ export function createCodexStreamTransformer(
             responseId = (resp.id as string) || responseId;
             const usage = resp.usage as Record<string, number> | undefined;
             if (usage) {
-              totalInputTokens = usage.input_tokens || usage.prompt_tokens || 0;
-              totalOutputTokens = usage.output_tokens || usage.completion_tokens || 0;
+              totalInputTokens = usage.input_tokens ?? usage.prompt_tokens ?? 0;
+              totalOutputTokens = usage.output_tokens ?? usage.completion_tokens ?? 0;
             }
           }
           continue;

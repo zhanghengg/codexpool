@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { estimateCostSmart } from "@/lib/pricing";
 import { z } from "zod";
 import { startOfDay, subDays } from "date-fns";
 
@@ -35,7 +34,7 @@ export async function GET(request: Request) {
       promptTokens: true,
       completionTokens: true,
       totalTokens: true,
-      model: true,
+      cost: true,
     },
   });
 
@@ -66,14 +65,13 @@ export async function GET(request: Request) {
 
   for (const log of logs) {
     const dateStr = startOfDay(log.createdAt).toISOString().split("T")[0];
-    const logCost = estimateCostSmart(log.promptTokens, log.completionTokens, log.totalTokens, log.model);
     const entry = byDay.get(dateStr);
     if (entry) {
       entry.requestCount += 1;
       entry.tokenUsage += log.totalTokens;
       entry.promptTokens += log.promptTokens;
       entry.completionTokens += log.completionTokens;
-      entry.cost += logCost;
+      entry.cost += log.cost;
     } else {
       byDay.set(dateStr, {
         date: dateStr,
@@ -81,7 +79,7 @@ export async function GET(request: Request) {
         tokenUsage: log.totalTokens,
         promptTokens: log.promptTokens,
         completionTokens: log.completionTokens,
-        cost: logCost,
+        cost: log.cost,
       });
     }
   }
