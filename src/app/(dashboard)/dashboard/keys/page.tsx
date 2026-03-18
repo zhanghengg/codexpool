@@ -104,6 +104,18 @@ export default function KeysPage() {
     toast.success("已复制到剪贴板");
   }
 
+  async function copyFullKey(id: string) {
+    try {
+      const res = await fetch(`/api/user/keys/${id}`);
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      await navigator.clipboard.writeText(data.key);
+      toast.success("已复制到剪贴板");
+    } catch {
+      toast.error("复制失败");
+    }
+  }
+
   function closeCreateDialog() {
     setCreateOpen(false);
     setCreateName("");
@@ -241,8 +253,21 @@ export default function KeysPage() {
                         )}
                       </div>
                     </TableCell>
-                    <TableCell className="font-mono text-sm text-muted-foreground">
-                      {k.key}
+                    <TableCell>
+                      <div className="flex items-center gap-1">
+                        <span className="font-mono text-sm text-muted-foreground">
+                          {k.key}
+                        </span>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="size-7 text-muted-foreground"
+                          onClick={() => copyFullKey(k.id)}
+                          title="复制完整密钥"
+                        >
+                          <Copy className="size-3.5" />
+                        </Button>
+                      </div>
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {format(new Date(k.createdAt), "yyyy-MM-dd HH:mm", {
