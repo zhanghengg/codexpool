@@ -30,9 +30,18 @@ export async function GET(request: Request) {
       prisma.user.count(),
     ]);
 
+    const userIds = users.map((u) => u.id);
+    const costAgg = await prisma.usageLog.groupBy({
+      by: ["userId"],
+      where: { userId: { in: userIds } },
+      _sum: { cost: true },
+    });
+    const costMap = new Map(costAgg.map((c) => [c.userId, c._sum.cost ?? 0]));
+
     const data = users.map(({ _count, ...u }) => ({
       ...u,
       subscriptionCount: _count.subscriptions,
+      totalCost: costMap.get(u.id) ?? 0,
     }));
 
     return NextResponse.json({

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Users, CreditCard, Zap, Coins, Server, AlertCircle } from "lucide-react";
+import { Users, CreditCard, Zap, Coins, DollarSign, Server, AlertCircle } from "lucide-react";
 import { format } from "date-fns";
 import { zhCN } from "date-fns/locale";
 
@@ -12,6 +12,7 @@ interface Stats {
   activeSubscriptions: number;
   todayRequests: number;
   todayTokens: number;
+  todayCost: number;
   upstreamHealth: {
     total: number;
     active: number;
@@ -100,13 +101,18 @@ export default function AdminOverviewPage() {
       value: stats.todayTokens.toLocaleString(),
       icon: Coins,
     },
+    {
+      title: "今日消耗",
+      value: stats.todayCost < 0.01 ? `$${stats.todayCost.toFixed(4)}` : `$${stats.todayCost.toFixed(2)}`,
+      icon: DollarSign,
+    },
   ];
 
   return (
     <div className="p-6">
       <h1 className="mb-6 text-2xl font-bold">管理概览</h1>
 
-      <div className="mb-8 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="mb-8 grid gap-4 md:grid-cols-2 lg:grid-cols-5">
         {statCards.map((card) => {
           const Icon = card.icon;
           return (

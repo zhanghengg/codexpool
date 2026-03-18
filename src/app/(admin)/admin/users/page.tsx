@@ -25,6 +25,7 @@ interface User {
   isBlocked: boolean;
   createdAt: string;
   subscriptionCount: number;
+  totalCost: number;
 }
 
 interface Pagination {
@@ -124,6 +125,7 @@ export default function AdminUsersPage() {
                 <TableHead>角色</TableHead>
                 <TableHead>状态</TableHead>
                 <TableHead>订阅数</TableHead>
+                <TableHead>累计消耗</TableHead>
                 <TableHead>注册时间</TableHead>
                 <TableHead className="w-[100px]">操作</TableHead>
               </TableRow>
@@ -144,6 +146,11 @@ export default function AdminUsersPage() {
                     </Badge>
                   </TableCell>
                   <TableCell>{user.subscriptionCount}</TableCell>
+                  <TableCell className="font-mono text-sm">
+                    {user.totalCost < 0.01
+                      ? `$${user.totalCost.toFixed(4)}`
+                      : `$${user.totalCost.toFixed(2)}`}
+                  </TableCell>
                   <TableCell>
                     {format(new Date(user.createdAt), "yyyy-MM-dd", {
                       locale: zhCN,
