@@ -163,7 +163,7 @@ async function handleCheckHealth(upstream: {
       stream: true,
       store: false,
       reasoning: { effort: "low" },
-      max_output_tokens: 4,
+      include: ["reasoning.encrypted_content"],
     });
 
     const resp = await fetch(`${upstream.baseUrl}/responses`, {
