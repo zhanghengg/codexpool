@@ -159,7 +159,7 @@ async function handleCheckHealth(upstream: {
     const testBody = JSON.stringify({
       model: "gpt-5.2",
       instructions: "Reply with OK",
-      input: "hi",
+      input: [{ role: "user", content: "hi" }],
       stream: false,
       store: false,
       max_output_tokens: 4,
