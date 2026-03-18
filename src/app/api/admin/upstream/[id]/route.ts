@@ -160,8 +160,9 @@ async function handleCheckHealth(upstream: {
       model: "gpt-5.2",
       instructions: "Reply with OK",
       input: [{ role: "user", content: "hi" }],
-      stream: false,
+      stream: true,
       store: false,
+      reasoning: { effort: "low" },
       max_output_tokens: 4,
     });
 
@@ -175,7 +176,9 @@ async function handleCheckHealth(upstream: {
         "Openai-Beta": "responses=experimental",
         Version: "0.112.0",
         Originator: "codex_cli_rs",
+        Session_id: crypto.randomUUID(),
         "Chatgpt-Account-Id": upstream.accountId,
+        Connection: "Keep-Alive",
       },
       body: testBody,
       signal: AbortSignal.timeout(15_000),
